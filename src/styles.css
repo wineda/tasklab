@@ -93,6 +93,13 @@ body {
 .tl-input {
   font-family: inherit;
 }
+
+/* プレースホルダーは薄めのグレーに */
+input::placeholder,
+textarea::placeholder {
+  color: #b2bac0;
+  opacity: 1; /* Firefox の既定の半透明を打ち消す */
+}
 .tl-input:focus {
   outline: none;
   border-color: var(--accent);

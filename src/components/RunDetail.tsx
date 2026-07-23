@@ -404,14 +404,16 @@ export function RunDetail({
                 onClick={() => sharePrompt(`${draft.name} の分析`, buildPrompt(draft, promptTemplate))}
                 style={{
                   flex: 1,
-                  padding: '13px',
+                  padding: '10px 12px',
+                  minHeight: 42,
                   border: 'none',
                   borderRadius: 9,
                   background: COLORS.ink,
                   color: '#fff',
-                  fontSize: 14,
+                  fontSize: 13.5,
                   fontWeight: 600,
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 プロンプトを共有
@@ -428,11 +430,13 @@ export function RunDetail({
               }}
               style={{
                 flex: 1,
-                padding: '13px',
+                padding: '10px 12px',
+                minHeight: 42,
                 borderRadius: 9,
                 cursor: 'pointer',
-                fontSize: 14,
+                fontSize: 13.5,
                 fontWeight: 600,
+                whiteSpace: 'nowrap',
                 border: canShare() ? `1px solid ${COLORS.line}` : 'none',
                 background: canShare() ? '#fff' : COLORS.ink,
                 color: canShare() ? COLORS.ink : '#fff',
