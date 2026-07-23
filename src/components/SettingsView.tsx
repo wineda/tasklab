@@ -23,6 +23,7 @@ export function SettingsView({
   const [confirmBack, setConfirmBack] = useState(false)
   const [pendingImport, setPendingImport] = useState<AppData | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [exportedTick, setExportedTick] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => setDraft(promptTemplate), [promptTemplate])
@@ -62,6 +63,8 @@ export function SettingsView({
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    setExportedTick(true)
+    setTimeout(() => setExportedTick(false), 1800)
   }
 
   // --- インポート ---
@@ -169,8 +172,15 @@ export function SettingsView({
         端末変更やバックアップ用に、すべてのランと設定を JSON で書き出し / 読み込みできます。
       </p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button onClick={doExport} style={{ ...btnGhost, flex: 1 }}>
-          データを書き出す
+        <button
+          onClick={doExport}
+          style={{
+            ...btnGhost,
+            flex: 1,
+            ...(exportedTick ? { color: COLORS.green, borderColor: COLORS.green } : null),
+          }}
+        >
+          {exportedTick ? '✓ 書き出しました' : 'データを書き出す'}
         </button>
         <button onClick={() => fileRef.current?.click()} style={{ ...btnGhost, flex: 1 }}>
           データを読み込む

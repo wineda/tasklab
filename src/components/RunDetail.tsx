@@ -202,7 +202,7 @@ export function RunDetail({
         >
           <span style={{ fontWeight: 700, fontSize: 13 }}>タスク {draft.tasks.length}</span>
           {draft.tasks.length >= 2 && (
-            <span style={{ fontSize: 11, color: COLORS.gray }}>長押しで並べ替え</span>
+            <span style={{ fontSize: 11, color: COLORS.gray }}>⠿ 長押しで並べ替え</span>
           )}
           <div style={{ display: 'flex', gap: 10, fontSize: 11, color: COLORS.inkSoft }}>
             <Legend color={COLORS.plan} label="計画" />
@@ -217,6 +217,7 @@ export function RunDetail({
               index={i}
               task={t}
               barMaxValue={barMaxValue}
+              canReorder={draft.tasks.length >= 2}
               isDragging={drag.draggingIndex === i}
               isPending={drag.pendingIndex === i}
               reducedMotion={reducedMotion}
