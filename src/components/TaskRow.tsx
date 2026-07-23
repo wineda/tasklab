@@ -7,6 +7,7 @@ export function TaskRow({
   index,
   task,
   barMaxValue,
+  canReorder,
   isDragging,
   isPending,
   reducedMotion,
@@ -19,6 +20,7 @@ export function TaskRow({
   index: number
   task: Task
   barMaxValue: number
+  canReorder: boolean
   isDragging: boolean
   isPending: boolean
   reducedMotion: boolean
@@ -56,11 +58,37 @@ export function TaskRow({
         ...floating,
       }}
     >
-      {/* 1 行目: 連番 / 名前 / Δ / 削除 */}
+      {/* 1 行目: グリップ / 連番 / 名前 / Δ / 削除 */}
       <div
         onPointerDown={onPointerDown}
-        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          // 長押し中に iOS のテキスト選択・コールアウトが割り込むのを防ぐ
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none',
+          cursor: canReorder ? 'grab' : 'default',
+        }}
       >
+        {canReorder && (
+          <span
+            aria-hidden
+            title="長押しで並べ替え"
+            style={{
+              flexShrink: 0,
+              color: isDragging ? COLORS.accent : COLORS.gray,
+              fontSize: 15,
+              lineHeight: 1,
+              letterSpacing: '-1px',
+              width: 14,
+              textAlign: 'center',
+            }}
+          >
+            ⠿
+          </span>
+        )}
         <span
           className="mono"
           style={{ fontSize: 12, color: COLORS.gray, width: 18, textAlign: 'right', flexShrink: 0 }}
@@ -82,6 +110,9 @@ export function TaskRow({
             fontWeight: 600,
             padding: '2px 0',
             color: COLORS.ink,
+            // 親の user-select:none を打ち消して名前は編集・選択可能に
+            WebkitUserSelect: 'text',
+            userSelect: 'text',
           }}
         />
         <span
