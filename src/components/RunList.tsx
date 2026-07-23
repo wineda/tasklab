@@ -1,18 +1,23 @@
-// ラン一覧画面（ホーム）（仕様書 §3.1）
+// ラン一覧画面（ホーム）（仕様書 §3.1 / モック ListScreen 準拠）
 import { COLORS } from '../constants'
-import { computeMetrics, fmtSigned, fmtDuration } from '../metrics'
+import { computeMetrics, fmt } from '../metrics'
 import type { Run } from '../types'
+import { DeltaPill } from './common'
 
-function fmtMD(epoch: number): string {
-  const d = new Date(epoch)
+function mdate(ts: number): string {
+  const d = new Date(ts)
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-function deltaColor(delta: number, measured: number): string {
-  if (measured === 0) return COLORS.gray
-  if (delta > 0) return COLORS.rose
-  if (delta < 0) return COLORS.green
-  return COLORS.gray
+const miniBtn: React.CSSProperties = {
+  border: 'none',
+  background: 'transparent',
+  color: COLORS.inkSoft,
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: 'pointer',
+  padding: '4px 6px',
+  borderRadius: 6,
 }
 
 export function RunList({
@@ -31,102 +36,127 @@ export function RunList({
   onOpenSettings: () => void
 }) {
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px 40px' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '18px 2px 14px',
-        }}
-      >
-        <div
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontWeight: 700,
-            fontSize: 22,
-            letterSpacing: '-0.02em',
-          }}
-        >
-          <span style={{ color: COLORS.accent }}>Δ</span> TaskLab
+    <div className="tl-view">
+      <header style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span
+            className="tl-disp"
+            style={{ fontSize: 34, fontWeight: 700, color: COLORS.accent, lineHeight: 1 }}
+          >
+            Δ
+          </span>
+          <h1
+            className="tl-disp"
+            style={{ fontSize: 23, fontWeight: 600, margin: 0, letterSpacing: '-0.02em' }}
+          >
+            TaskLab
+          </h1>
+          <button
+            className="tl-btn tl-ghost"
+            onClick={onOpenSettings}
+            aria-label="設定"
+            title="設定"
+            style={{
+              marginLeft: 'auto',
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              border: `1px solid ${COLORS.line}`,
+              background: COLORS.surface,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+            }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={COLORS.inkSoft}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
         </div>
-        <button
-          onClick={onOpenSettings}
-          aria-label="設定"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            border: `1px solid ${COLORS.line}`,
-            background: COLORS.surface,
-            fontSize: 18,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          ⚙
-        </button>
+        <p style={{ margin: '7px 0 0 2px', fontSize: 13, color: COLORS.inkSoft }}>
+          ランを選んでタスクを組み立て、計画と実測の
+          <b style={{ color: COLORS.ink }}>ズレ（Δ）</b>を計測します。
+        </p>
       </header>
 
       <button
+        className="tl-btn"
         onClick={onNew}
         style={{
           width: '100%',
+          padding: '15px',
+          border: 'none',
+          borderRadius: 12,
           background: COLORS.accent,
           color: '#fff',
-          border: 'none',
-          borderRadius: 14,
-          padding: '14px',
-          fontWeight: 700,
           fontSize: 15,
+          fontWeight: 600,
+          cursor: 'pointer',
           marginBottom: 18,
-          minHeight: 48,
+          fontFamily: "'Space Grotesk',sans-serif",
         }}
       >
         ＋ 新しいランをつくる
       </button>
 
       {runs.length === 0 ? (
-        <EmptyState />
+        <div
+          style={{
+            padding: '56px 20px',
+            textAlign: 'center',
+            color: COLORS.gray,
+            border: `1px dashed ${COLORS.line}`,
+            borderRadius: 14,
+            background: COLORS.surface,
+          }}
+        >
+          <div className="tl-disp" style={{ fontSize: 34, color: COLORS.line, marginBottom: 10 }}>
+            Δ
+          </div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+            まだランがありません。
+            <br />
+            「新しいランをつくる」から始めましょう。
+          </div>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {runs.map((run) => (
+        <div>
+          <div
+            className="tl-disp"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              color: COLORS.inkSoft,
+              margin: '0 2px 10px',
+            }}
+          >
+            ラン一覧（{runs.length}）
+          </div>
+          {runs.map((r) => (
             <RunCard
-              key={run.id}
-              run={run}
-              onOpen={() => onOpen(run.id)}
-              onDuplicate={() => onDuplicate(run.id)}
-              onDelete={() => onDelete(run.id)}
+              key={r.id}
+              run={r}
+              onOpen={onOpen}
+              onDuplicate={onDuplicate}
+              onDelete={onDelete}
             />
           ))}
         </div>
       )}
-    </div>
-  )
-}
-
-function EmptyState() {
-  return (
-    <div
-      style={{
-        textAlign: 'center',
-        padding: '48px 20px',
-        color: COLORS.inkSoft,
-        border: `1px dashed ${COLORS.line}`,
-        borderRadius: 16,
-        background: COLORS.surface,
-      }}
-    >
-      <div style={{ fontSize: 32, marginBottom: 12 }}>Δ</div>
-      <div style={{ fontWeight: 700, color: COLORS.ink, marginBottom: 6 }}>
-        まだランがありません
-      </div>
-      <div style={{ fontSize: 14, lineHeight: 1.7 }}>
-        「＋ 新しいランをつくる」から
-        <br />
-        最初のタスク計測をはじめましょう。
-      </div>
     </div>
   )
 }
@@ -138,123 +168,134 @@ function RunCard({
   onDelete,
 }: {
   run: Run
-  onOpen: () => void
-  onDuplicate: () => void
-  onDelete: () => void
+  onOpen: (id: string) => void
+  onDuplicate: (id: string) => void
+  onDelete: (id: string) => void
 }) {
   const m = computeMetrics(run)
-  const dColor = deltaColor(m.delta, m.measuredCount)
-  // ばらつきは相殺が起きている場合のみ表示（|Δ合計| と Σ|Δ| が異なるとき）
-  const showSpread = m.measuredCount > 0 && m.absSum !== Math.abs(m.delta)
+  const total = m.totalCount
+  const done = m.measuredCount
+  const delta = done ? m.delta : null
+  const absDelta = done ? m.absSum : null
 
   return (
     <div
+      className="tl-card"
+      onClick={() => onOpen(run.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen(run.id)}
       style={{
         background: COLORS.surface,
         border: `1px solid ${COLORS.line}`,
-        borderRadius: 16,
-        padding: 16,
+        borderRadius: 14,
+        padding: '15px 16px',
+        marginBottom: 11,
       }}
     >
-      <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === 'Enter' && onOpen()} style={{ cursor: 'pointer' }}>
-        <div
-          style={{
-            fontWeight: 700,
-            fontSize: 16,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {run.name || '無題のラン'}
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: run.description ? COLORS.inkSoft : COLORS.gray,
-            marginTop: 4,
-            lineHeight: 1.5,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            minHeight: 18,
-          }}
-        >
-          {run.description || '説明なし'}
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            flexWrap: 'wrap',
-            fontSize: 12,
-            color: COLORS.inkSoft,
-            marginTop: 10,
-          }}
-        >
-          <span>{fmtMD(run.createdAt)}</span>
-          <span>タスク {m.totalCount}</span>
-          <span>
-            計測 {m.measuredCount}/{m.totalCount}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 12,
-            marginTop: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontSize: 11, color: COLORS.inkSoft }}>Δ 合計</span>
-            <span className="mono" style={{ fontSize: 18, fontWeight: 700, color: dColor }}>
-              {m.measuredCount > 0 ? fmtSigned(m.delta) : '—'}
-            </span>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            className="tl-disp"
+            style={{
+              fontSize: 17,
+              fontWeight: 600,
+              color: COLORS.ink,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {run.name || '無題のラン'}
           </div>
-          {showSpread && (
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-              <span style={{ fontSize: 11, color: COLORS.inkSoft }}>ばらつき</span>
-              <span className="mono" style={{ fontSize: 13, color: COLORS.inkSoft }}>
-                ±{fmtDuration(m.absSum)}
-              </span>
-            </div>
-          )}
+          <div
+            style={{
+              fontSize: 13,
+              color: run.description ? COLORS.inkSoft : COLORS.gray,
+              marginTop: 4,
+              lineHeight: 1.5,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {run.description || '説明なし'}
+          </div>
         </div>
+        <span className="tl-disp" style={{ fontSize: 22, color: COLORS.gray, lineHeight: 1 }}>
+          ›
+        </span>
+      </div>
+
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}
+      >
+        <span className="tl-mono" style={{ fontSize: 11, color: COLORS.gray }}>
+          {mdate(run.createdAt)}
+        </span>
+        <span className="tl-mono" style={{ fontSize: 11, color: COLORS.inkSoft }}>
+          {total} タスク
+        </span>
+        {total > 0 &&
+          (done > 0 ? (
+            <>
+              <span style={{ color: COLORS.line }}>·</span>
+              <span className="tl-mono" style={{ fontSize: 11, color: COLORS.inkSoft }}>
+                {done}/{total} 計測
+              </span>
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <DeltaPill delta={delta} />
+                {absDelta != null && absDelta !== Math.abs(delta ?? 0) && (
+                  <span
+                    className="tl-mono"
+                    style={{ fontSize: 11, fontWeight: 700, color: COLORS.inkSoft }}
+                  >
+                    ±{fmt(absDelta)}
+                  </span>
+                )}
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ color: COLORS.line }}>·</span>
+              <span className="tl-mono" style={{ fontSize: 11, color: COLORS.gray }}>
+                未計測
+              </span>
+            </>
+          ))}
       </div>
 
       <div
         style={{
           display: 'flex',
-          gap: 8,
-          marginTop: 14,
-          paddingTop: 12,
+          gap: 14,
+          marginTop: 12,
+          paddingTop: 11,
           borderTop: `1px solid ${COLORS.line}`,
         }}
       >
-        <button onClick={onDuplicate} style={cardActionStyle}>
+        <button
+          className="tl-btn tl-ghost"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDuplicate(run.id)
+          }}
+          style={miniBtn}
+        >
           複製
         </button>
-        <button onClick={onDelete} style={{ ...cardActionStyle, color: COLORS.rose }}>
+        <button
+          className="tl-btn tl-ghost"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(run.id)
+          }}
+          style={{ ...miniBtn, color: COLORS.rose }}
+        >
           削除
         </button>
       </div>
     </div>
   )
-}
-
-const cardActionStyle: React.CSSProperties = {
-  flex: 1,
-  background: 'transparent',
-  border: `1px solid ${COLORS.line}`,
-  borderRadius: 9,
-  padding: '8px',
-  fontSize: 13,
-  fontWeight: 600,
-  color: COLORS.inkSoft,
-  minHeight: 36,
 }

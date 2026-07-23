@@ -1,238 +1,327 @@
-// タスク行（仕様書 §3.2 / §4.2）
+// タスク行 + 長押しドラッグ並べ替え（仕様書 §3.2 / §4.2 / §4.3、モック TaskList/TaskRow 準拠）
+import { useEffect, useRef, useState } from 'react'
 import { COLORS } from '../constants'
-import { taskDelta, barPct, fmtSigned } from '../metrics'
+import { signStr } from '../metrics'
 import type { Task } from '../types'
 
-export function TaskRow({
-  index,
+const LONG_PRESS_MS = 380
+const MOVE_TOLERANCE = 10
+
+function scalePct(v: number, maxMin: number): string {
+  return `${Math.max(2, (v / (maxMin || 1)) * 100)}%`
+}
+
+// --- 1 タスク行 ---
+function TaskRow({
   task,
-  barMaxValue,
-  canReorder,
+  index,
+  maxMin,
   isDragging,
-  isPending,
-  reducedMotion,
-  onPointerDown,
+  isArmed,
+  onRowDown,
   onName,
   onEstimate,
   onActual,
-  onDelete,
+  onRemove,
 }: {
-  index: number
   task: Task
-  barMaxValue: number
-  canReorder: boolean
+  index: number
+  maxMin: number
   isDragging: boolean
-  isPending: boolean
-  reducedMotion: boolean
-  onPointerDown: (e: React.PointerEvent) => void
-  onName: (v: string) => void
-  onEstimate: (v: string) => void
-  onActual: (v: string) => void
-  onDelete: () => void
+  isArmed: boolean
+  onRowDown: (e: React.PointerEvent, id: string) => void
+  onName: (id: string, v: string) => void
+  onEstimate: (id: string, v: string) => void
+  onActual: (id: string, v: string) => void
+  onRemove: (id: string) => void
 }) {
-  const d = taskDelta(task)
-  const dColor = d === null ? COLORS.gray : d > 0 ? COLORS.rose : d < 0 ? COLORS.green : COLORS.gray
-
-  const floating: React.CSSProperties = isDragging
-    ? {
-        borderRadius: 12,
-        boxShadow: '0 2px 6px rgba(0,0,0,0.10), 0 10px 24px rgba(0,0,0,0.16)',
-        outline: `2px solid ${COLORS.accent}`,
-        outlineOffset: -1,
-        background: COLORS.surface,
-        transform: reducedMotion ? undefined : 'scale(1.02) rotate(-0.4deg)',
-        zIndex: 5,
-        position: 'relative',
-      }
-    : {}
+  const est = task.estimateMin
+  const act = task.actualMin
+  const hasAct = act != null
+  const delta = hasAct ? act - est : null
+  const dColor =
+    delta == null ? COLORS.gray : delta > 0 ? COLORS.rose : delta < 0 ? COLORS.green : COLORS.inkSoft
 
   return (
     <div
-      data-drag-row
+      data-row
+      onPointerDown={(e) => onRowDown(e, task.id)}
+      onContextMenu={(e) => {
+        if (isDragging || isArmed) e.preventDefault()
+      }}
       style={{
-        padding: '10px 4px',
-        borderTop: index === 0 ? 'none' : `1px solid ${COLORS.line}`,
-        background: isPending ? COLORS.accentSoft : 'transparent',
-        transition: reducedMotion ? 'none' : 'background 120ms ease',
-        touchAction: isDragging ? 'none' : 'auto',
-        ...floating,
+        display: 'flex',
+        alignItems: 'stretch',
+        borderBottom: isDragging ? '1px solid transparent' : `1px solid ${COLORS.line}`,
+        background: isDragging ? '#fff' : isArmed ? `${COLORS.accent}0a` : 'transparent',
+        boxShadow: isDragging
+          ? `0 14px 32px rgba(30,38,44,.22), 0 3px 8px rgba(30,38,44,.12), 0 0 0 1.5px ${COLORS.accent}55`
+          : 'none',
+        borderRadius: isDragging ? 12 : 0,
+        position: 'relative',
+        zIndex: isDragging ? 3 : 1,
+        transform: isDragging ? 'scale(1.02) rotate(-0.4deg)' : 'none',
+        transition:
+          'box-shadow .15s ease, transform .15s ease, border-radius .15s ease, background-color .2s ease',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+        cursor: isDragging ? 'grabbing' : 'default',
       }}
     >
-      {/* 1 行目: グリップ / 連番 / 名前 / Δ / 削除 */}
-      <div
-        onPointerDown={onPointerDown}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          // 長押し中に iOS のテキスト選択・コールアウトが割り込むのを防ぐ
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTouchCallout: 'none',
-          cursor: canReorder ? 'grab' : 'default',
-        }}
-      >
-        {canReorder && (
-          <span
-            aria-hidden
-            title="長押しで並べ替え"
+      <div style={{ flex: 1, minWidth: 0, padding: '9px 12px' }}>
+        {/* 1 行目: 連番 / 名前 / Δ / 削除 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+          <span className="tl-mono" style={{ fontSize: 10.5, color: COLORS.gray }}>
+            {String(index + 1).padStart(2, '0')}
+          </span>
+          <input
+            value={task.name}
+            onChange={(e) => onName(task.id, e.target.value)}
+            onPointerDown={(e) => e.stopPropagation()}
+            placeholder="タスク名"
+            aria-label="タスク名"
             style={{
-              flexShrink: 0,
-              color: isDragging ? COLORS.accent : COLORS.gray,
-              fontSize: 15,
+              flex: 1,
+              minWidth: 0,
+              border: 'none',
+              background: 'transparent',
+              fontSize: 14,
+              fontWeight: 500,
+              color: COLORS.ink,
+              padding: 0,
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
+            }}
+          />
+          <span className="tl-mono" style={{ fontSize: 12, fontWeight: 700, color: dColor }}>
+            {delta == null ? '' : `Δ ${signStr(delta)}`}
+          </span>
+          <button
+            className="tl-btn tl-ghost"
+            onClick={() => onRemove(task.id)}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="削除"
+            aria-label="タスクを削除"
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: COLORS.gray,
+              fontSize: 17,
+              cursor: 'pointer',
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              padding: 0,
               lineHeight: 1,
-              letterSpacing: '-1px',
-              width: 14,
-              textAlign: 'center',
             }}
           >
-            ⠿
-          </span>
-        )}
-        <span
-          className="mono"
-          style={{ fontSize: 12, color: COLORS.gray, width: 18, textAlign: 'right', flexShrink: 0 }}
-        >
-          {index + 1}
-        </span>
-        <input
-          value={task.name}
-          onChange={(e) => onName(e.target.value)}
-          onPointerDown={(e) => e.stopPropagation()}
-          placeholder="タスク名"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            border: 'none',
-            borderBottom: `1px solid transparent`,
-            background: 'transparent',
-            fontSize: 14,
-            fontWeight: 600,
-            padding: '2px 0',
-            color: COLORS.ink,
-            // 親の user-select:none を打ち消して名前は編集・選択可能に
-            WebkitUserSelect: 'text',
-            userSelect: 'text',
-          }}
-        />
-        <span
-          className="mono"
-          style={{ fontSize: 13, fontWeight: 700, color: dColor, flexShrink: 0 }}
-        >
-          {d === null ? '' : fmtSigned(d)}
-        </span>
-        <button
-          onClick={onDelete}
-          onPointerDown={(e) => e.stopPropagation()}
-          aria-label="タスクを削除"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            border: 'none',
-            background: 'transparent',
-            color: COLORS.gray,
-            fontSize: 16,
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          ×
-        </button>
-      </div>
-
-      {/* 2 行目: バー + 計画入力 + 実測入力 + 単位 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, paddingLeft: 26 }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <Bar value={task.estimateMin} max={barMaxValue} color={COLORS.plan} />
-          <Bar
-            value={task.actualMin ?? 0}
-            max={barMaxValue}
-            color={COLORS.actual}
-            faded={task.actualMin === null}
-          />
+            ×
+          </button>
         </div>
-        <NumInput
-          value={task.estimateMin}
-          onChange={onEstimate}
-          ariaLabel="計画（分）"
-          accent={COLORS.plan}
-        />
-        <NumInput
-          value={task.actualMin}
-          onChange={onActual}
-          ariaLabel="実測（分）"
-          accent={COLORS.actual}
-          placeholder="—"
-        />
-        <span style={{ fontSize: 11, color: COLORS.inkSoft, flexShrink: 0 }}>分</span>
+
+        {/* 2 行目: バー / 計画入力 / 実測入力 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                height: 5,
+                background: `${COLORS.plan}18`,
+                borderRadius: 3,
+                overflow: 'hidden',
+                marginBottom: 3,
+              }}
+            >
+              <div
+                className="tl-bar"
+                style={{ width: scalePct(est, maxMin), height: '100%', background: COLORS.plan, borderRadius: 3 }}
+              />
+            </div>
+            <div style={{ height: 5, background: `${COLORS.actual}18`, borderRadius: 3, overflow: 'hidden' }}>
+              <div
+                className="tl-bar"
+                style={{
+                  width: hasAct ? scalePct(act, maxMin) : '0%',
+                  height: '100%',
+                  background: COLORS.actual,
+                  borderRadius: 3,
+                }}
+              />
+            </div>
+          </div>
+          <input
+            className="tl-input tl-mono"
+            type="number"
+            min="0"
+            inputMode="numeric"
+            value={est == null ? '' : est}
+            onChange={(e) => onEstimate(task.id, e.target.value)}
+            onPointerDown={(e) => e.stopPropagation()}
+            placeholder="計画"
+            title="計画（見積もり）を編集"
+            style={{
+              width: 50,
+              padding: '6px 6px',
+              textAlign: 'right',
+              fontSize: 13,
+              border: `1px solid ${COLORS.plan}44`,
+              borderRadius: 7,
+              background: `${COLORS.plan}08`,
+              color: COLORS.plan,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ color: COLORS.line, flexShrink: 0 }}>/</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <input
+              className="tl-input tl-mono"
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={act == null ? '' : act}
+              onChange={(e) => onActual(task.id, e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+              placeholder="実測"
+              aria-label="実測（分）"
+              style={{
+                width: 50,
+                padding: '6px 6px',
+                textAlign: 'right',
+                fontSize: 13,
+                border: `1px solid ${COLORS.line}`,
+                borderRadius: 7,
+                background: '#fff',
+                color: COLORS.actual,
+              }}
+            />
+            <span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>分</span>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-function Bar({
-  value,
-  max,
-  color,
-  faded,
+// --- 長押しドラッグ対応リスト ---
+export function TaskList({
+  tasks,
+  maxMin,
+  onName,
+  onEstimate,
+  onActual,
+  onRemove,
+  onReorder,
 }: {
-  value: number
-  max: number
-  color: string
-  faded?: boolean
+  tasks: Task[]
+  maxMin: number
+  onName: (id: string, v: string) => void
+  onEstimate: (id: string, v: string) => void
+  onActual: (id: string, v: string) => void
+  onRemove: (id: string) => void
+  onReorder: (next: Task[]) => void
 }) {
-  return (
-    <div style={{ height: 4, borderRadius: 2, background: COLORS.line, overflow: 'hidden' }}>
-      <div
-        style={{
-          height: '100%',
-          width: `${barPct(value, max)}%`,
-          background: color,
-          opacity: faded ? 0.25 : 1,
-          borderRadius: 2,
-        }}
-      />
-    </div>
-  )
-}
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [armedId, setArmedId] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const tasksRef = useRef(tasks)
+  const pendRef = useRef<{ id: string; x: number; y: number; timer: number } | null>(null)
+  tasksRef.current = tasks
 
-function NumInput({
-  value,
-  onChange,
-  ariaLabel,
-  accent,
-  placeholder,
-}: {
-  value: number | null
-  onChange: (v: string) => void
-  ariaLabel: string
-  accent: string
-  placeholder?: string
-}) {
+  // ドラッグ中はページスクロールとテキスト選択を抑止
+  useEffect(() => {
+    if (!dragId) return
+    const prevent = (e: TouchEvent) => e.preventDefault()
+    document.addEventListener('touchmove', prevent, { passive: false })
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.removeEventListener('touchmove', prevent)
+      document.body.style.userSelect = ''
+    }
+  }, [dragId])
+
+  useEffect(
+    () => () => {
+      if (pendRef.current) clearTimeout(pendRef.current.timer)
+    },
+    [],
+  )
+
+  const findTarget = (clientY: number): number => {
+    const rows = containerRef.current
+      ? Array.from(containerRef.current.querySelectorAll<HTMLElement>('[data-row]'))
+      : []
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].getBoundingClientRect()
+      if (clientY < r.top + r.height / 2) return i
+    }
+    return rows.length - 1
+  }
+
+  const cancelPending = () => {
+    if (pendRef.current) {
+      clearTimeout(pendRef.current.timer)
+      pendRef.current = null
+    }
+    setArmedId(null)
+  }
+
+  const handleRowDown = (e: React.PointerEvent, id: string) => {
+    // 入力・ボタン上では長押し判定しない
+    const el = e.target as HTMLElement
+    if (el.closest && el.closest('input,button,textarea,select,a')) return
+    cancelPending()
+    const timer = window.setTimeout(() => {
+      pendRef.current = null
+      setArmedId(null)
+      setDragId(id)
+      navigator.vibrate?.(12)
+    }, LONG_PRESS_MS)
+    pendRef.current = { id, x: e.clientX, y: e.clientY, timer }
+    setArmedId(id)
+  }
+
+  const handleMove = (e: React.PointerEvent) => {
+    // 長押し待機中に動いたら＝スクロール。ドラッグ化を中止
+    if (pendRef.current && !dragId) {
+      const dx = e.clientX - pendRef.current.x
+      const dy = e.clientY - pendRef.current.y
+      if (Math.hypot(dx, dy) > MOVE_TOLERANCE) cancelPending()
+      return
+    }
+    if (!dragId) return
+    const list = tasksRef.current
+    const cur = list.findIndex((t) => t.id === dragId)
+    if (cur < 0) return
+    const target = findTarget(e.clientY)
+    if (target < 0 || target === cur) return
+    const c = [...list]
+    const [x] = c.splice(cur, 1)
+    c.splice(target, 0, x)
+    onReorder(c)
+  }
+
+  const handleUp = () => {
+    cancelPending()
+    if (dragId) setDragId(null)
+  }
+
   return (
-    <input
-      value={value === null ? '' : String(value)}
-      onChange={(e) => onChange(e.target.value)}
-      onPointerDown={(e) => e.stopPropagation()}
-      inputMode="numeric"
-      aria-label={ariaLabel}
-      placeholder={placeholder}
-      style={{
-        width: 44,
-        flexShrink: 0,
-        textAlign: 'right',
-        border: `1px solid ${COLORS.line}`,
-        borderRadius: 8,
-        padding: '6px 6px',
-        fontSize: 13,
-        fontFamily: 'var(--font-mono)',
-        color: accent,
-        background: COLORS.surface,
-        minHeight: 36,
-      }}
-    />
+    <div ref={containerRef} onPointerMove={handleMove} onPointerUp={handleUp} onPointerCancel={handleUp}>
+      {tasks.map((t, i) => (
+        <TaskRow
+          key={t.id}
+          task={t}
+          index={i}
+          maxMin={maxMin}
+          isDragging={dragId === t.id}
+          isArmed={armedId === t.id && !dragId}
+          onRowDown={handleRowDown}
+          onName={onName}
+          onEstimate={onEstimate}
+          onActual={onActual}
+          onRemove={onRemove}
+        />
+      ))}
+    </div>
   )
 }

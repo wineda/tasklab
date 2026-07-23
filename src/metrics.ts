@@ -98,3 +98,21 @@ export function fmtSigned(min: number): string {
 export function fmtPct(pct: number): string {
   return `${Math.round(pct)}%`
 }
+
+// モック TaskLabV10 準拠の表記ヘルパー
+// null は「—」。60 分以上は `Nh Mm`、未満は `Nm`。負値は先頭に「-」。
+export function fmt(m: number | null): string {
+  if (m == null || Number.isNaN(m)) return '—'
+  const s = m < 0 ? '-' : ''
+  const a = Math.abs(Math.round(m))
+  const h = Math.floor(a / 60)
+  const mm = a % 60
+  if (h && mm) return `${s}${h}h ${mm}m`
+  if (h) return `${s}${h}h`
+  return `${s}${mm}m`
+}
+
+// 符号付き（正のときのみ `+` を前置。負は fmt が `-` を持つ）。
+export function signStr(m: number): string {
+  return (Math.round(m) > 0 ? '+' : '') + fmt(m)
+}

@@ -1,9 +1,9 @@
-// プロンプト設定画面（仕様書 §3.3）+ エクスポート/インポート（§6.4）
-import { useEffect, useRef, useState } from 'react'
+// プロンプト設定画面（仕様書 §3.3 / モック SettingsScreen 準拠）+ データ入出力（§6.4）
+import { useRef, useState } from 'react'
 import { COLORS, DEFAULT_PROMPT } from '../constants'
 import { isValidAppData, normalizeAppData } from '../storage'
 import type { AppData } from '../types'
-import { ConfirmDialog, btnGhost, btnSolid } from './common'
+import { ConfirmDialog } from './common'
 
 export function SettingsView({
   promptTemplate,
@@ -18,7 +18,8 @@ export function SettingsView({
   onImport: (data: AppData) => void
   onBack: () => void
 }) {
-  const [draft, setDraft] = useState(promptTemplate)
+  const base = promptTemplate || DEFAULT_PROMPT
+  const [text, setText] = useState(base)
   const [savedTick, setSavedTick] = useState(false)
   const [confirmBack, setConfirmBack] = useState(false)
   const [pendingImport, setPendingImport] = useState<AppData | null>(null)
@@ -26,33 +27,18 @@ export function SettingsView({
   const [exportedTick, setExportedTick] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => setDraft(promptTemplate), [promptTemplate])
+  const dirty = text !== base
+  const hasData = text.includes('{{DATA}}')
 
-  const dirty = draft !== promptTemplate
-  // 空文字は「既定を使用」を意味するため、既定プロンプトを基準に判定
-  const effective = draft.trim() ? draft : DEFAULT_PROMPT
-  const hasDataToken = effective.includes('{{DATA}}')
-
-  const handleBack = () => {
-    if (dirty) setConfirmBack(true)
-    else onBack()
-  }
-
-  const save = () => {
-    onSavePrompt(draft)
+  const doSave = () => {
+    // 既定と同一なら空文字（＝既定を使用）で保存
+    onSavePrompt(text === DEFAULT_PROMPT ? '' : text)
     setSavedTick(true)
     setTimeout(() => setSavedTick(false), 1800)
   }
 
-  const resetDefault = () => {
-    // 既定に戻す = 空文字（＝既定プロンプトを使用）
-    setDraft('')
-  }
-
-  // --- エクスポート ---
   const doExport = () => {
-    const data = getData()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(getData(), null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     const d = new Date()
@@ -67,10 +53,9 @@ export function SettingsView({
     setTimeout(() => setExportedTick(false), 1800)
   }
 
-  // --- インポート ---
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    e.target.value = '' // 同じファイル再選択を可能に
+    e.target.value = ''
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
@@ -90,114 +75,170 @@ export function SettingsView({
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px 60px' }}>
-      <nav
+    <div className="tl-view">
+      <div
         style={{
           position: 'sticky',
           top: 0,
-          zIndex: 20,
+          zIndex: 5,
           background: COLORS.paper,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '12px 0',
-          borderBottom: `1px solid ${COLORS.line}`,
+          padding: '6px 0 12px',
+          marginBottom: 4,
         }}
       >
         <button
-          onClick={handleBack}
-          style={{ background: 'transparent', border: 'none', fontSize: 14, fontWeight: 600, padding: '8px 4px', minHeight: 36 }}
+          className="tl-btn tl-ghost"
+          onClick={() => (dirty ? setConfirmBack(true) : onBack())}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            border: 'none',
+            background: 'transparent',
+            color: COLORS.accent,
+            fontSize: 15,
+            fontWeight: 600,
+            cursor: 'pointer',
+            padding: '6px 8px 6px 0',
+          }}
         >
           ‹ 一覧
         </button>
-        {dirty && <span style={{ color: COLORS.accent, fontSize: 18, lineHeight: 1 }}>●</span>}
-        <div style={{ flex: 1 }} />
-        <span style={{ fontWeight: 700, fontSize: 15 }}>設定</span>
-      </nav>
+        {dirty && (
+          <span className="tl-mono" style={{ fontSize: 10.5, color: COLORS.rose, fontWeight: 700 }}>
+            ● 未保存
+          </span>
+        )}
+      </div>
 
-      <h2 style={{ fontSize: 15, fontWeight: 700, margin: '20px 0 8px' }}>AI プロンプト</h2>
-      <p style={{ fontSize: 13, color: COLORS.inkSoft, lineHeight: 1.7, margin: '0 0 6px' }}>
-        <code style={codeChip}>{'{{DATA}}'}</code>{' '}
-        の位置にランのデータ（JSON）が挿入されます。空欄で保存すると既定のプロンプトを使用します。
+      <h1 className="tl-disp" style={{ fontSize: 22, fontWeight: 600, margin: '0 0 6px', letterSpacing: '-0.01em' }}>
+        プロンプト設定
+      </h1>
+      <p style={{ fontSize: 13, color: COLORS.inkSoft, margin: '0 0 16px', lineHeight: 1.6 }}>
+        「AIからの考察」で渡すプロンプトの本文を編集できます。
+        <span className="tl-mono" style={{ color: COLORS.accent }}>
+          {' '}
+          {'{{DATA}}'}
+        </span>{' '}
+        の位置に、そのランのデータ（JSON）が自動で挿入されます。
       </p>
-      {!hasDataToken && (
-        <div style={warnBox}>
-          <code style={codeChip}>{'{{DATA}}'}</code>{' '}
-          が見つかりません。このままではデータはプロンプト末尾に自動で追記されます。
-        </div>
-      )}
 
       <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        placeholder={DEFAULT_PROMPT}
-        rows={14}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={16}
+        className="tl-input"
         aria-label="プロンプト本文"
         style={{
           width: '100%',
+          boxSizing: 'border-box',
+          padding: '12px 13px',
           border: `1px solid ${COLORS.line}`,
-          borderRadius: 12,
-          padding: 12,
-          fontSize: 13,
-          fontFamily: 'var(--font-mono)',
-          lineHeight: 1.6,
-          resize: 'vertical',
-          background: COLORS.surface,
+          borderRadius: 10,
+          fontSize: 12.5,
+          background: '#fff',
           color: COLORS.ink,
-          marginTop: 6,
+          lineHeight: 1.6,
+          fontFamily: "'Space Mono',monospace",
+          marginBottom: 8,
         }}
       />
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-        <button onClick={resetDefault} style={btnGhost}>
-          既定に戻す
-        </button>
-        <div style={{ flex: 1 }} />
+      {!hasData && (
+        <p style={{ fontSize: 12, color: COLORS.rose, margin: '0 0 8px' }}>
+          ※ <span className="tl-mono">{'{{DATA}}'}</span>{' '}
+          が含まれていません。この場合、データは末尾に自動追記されます。
+        </p>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
         <button
-          onClick={save}
+          className="tl-btn"
+          onClick={doSave}
           disabled={!dirty && !savedTick}
           style={{
-            ...btnSolid,
-            background: dirty ? COLORS.accent : savedTick ? COLORS.green : COLORS.line,
-            color: dirty || savedTick ? '#fff' : COLORS.gray,
+            flex: 1,
+            padding: '13px',
+            border: 'none',
+            borderRadius: 9,
+            background: !dirty && !savedTick ? COLORS.inkSoft : savedTick ? COLORS.green : COLORS.accent,
+            color: '#fff',
+            fontSize: 14.5,
+            fontWeight: 600,
+            cursor: 'pointer',
           }}
         >
           {savedTick ? '✓ 保存しました' : '保存'}
         </button>
+        <button
+          className="tl-btn tl-ghost"
+          onClick={() => setText(DEFAULT_PROMPT)}
+          style={{
+            padding: '13px 18px',
+            border: `1px solid ${COLORS.line}`,
+            borderRadius: 9,
+            background: '#fff',
+            color: COLORS.inkSoft,
+            fontSize: 14,
+            cursor: 'pointer',
+          }}
+        >
+          既定に戻す
+        </button>
       </div>
 
-      {/* --- データ管理 --- */}
-      <h2 style={{ fontSize: 15, fontWeight: 700, margin: '28px 0 8px' }}>データ管理</h2>
-      <p style={{ fontSize: 13, color: COLORS.inkSoft, lineHeight: 1.7, margin: '0 0 12px' }}>
+      {/* データ管理 */}
+      <h1 className="tl-disp" style={{ fontSize: 22, fontWeight: 600, margin: '0 0 6px', letterSpacing: '-0.01em' }}>
+        データ管理
+      </h1>
+      <p style={{ fontSize: 13, color: COLORS.inkSoft, margin: '0 0 12px', lineHeight: 1.6 }}>
         端末変更やバックアップ用に、すべてのランと設定を JSON で書き出し / 読み込みできます。
+        読み込みは現在のデータを全置換します。
       </p>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8 }}>
         <button
+          className="tl-btn tl-ghost"
           onClick={doExport}
           style={{
-            ...btnGhost,
             flex: 1,
-            ...(exportedTick ? { color: COLORS.green, borderColor: COLORS.green } : null),
+            padding: '13px',
+            border: `1px solid ${exportedTick ? COLORS.green : COLORS.line}`,
+            borderRadius: 9,
+            background: '#fff',
+            color: exportedTick ? COLORS.green : COLORS.inkSoft,
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
           }}
         >
           {exportedTick ? '✓ 書き出しました' : 'データを書き出す'}
         </button>
-        <button onClick={() => fileRef.current?.click()} style={{ ...btnGhost, flex: 1 }}>
+        <button
+          className="tl-btn tl-ghost"
+          onClick={() => fileRef.current?.click()}
+          style={{
+            flex: 1,
+            padding: '13px',
+            border: `1px solid ${COLORS.line}`,
+            borderRadius: 9,
+            background: '#fff',
+            color: COLORS.inkSoft,
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
           データを読み込む
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          onChange={onFile}
-          style={{ display: 'none' }}
-        />
+        <input ref={fileRef} type="file" accept="application/json,.json" onChange={onFile} style={{ display: 'none' }} />
       </div>
       {importError && (
-        <div style={{ ...warnBox, marginTop: 10 }}>{importError}</div>
+        <p style={{ fontSize: 12, color: COLORS.rose, margin: '10px 0 0' }}>※ {importError}</p>
       )}
 
-      {/* --- ダイアログ --- */}
       {confirmBack && (
         <ConfirmDialog
           title="変更を破棄しますか？"
@@ -226,24 +267,4 @@ export function SettingsView({
       )}
     </div>
   )
-}
-
-const codeChip: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-  background: COLORS.accentSoft,
-  color: COLORS.accent,
-  padding: '1px 6px',
-  borderRadius: 6,
-  fontSize: 12,
-}
-
-const warnBox: React.CSSProperties = {
-  fontSize: 12.5,
-  color: '#8a5a1a',
-  background: '#fbf1dd',
-  border: '1px solid #e9d6a8',
-  borderRadius: 10,
-  padding: '10px 12px',
-  lineHeight: 1.6,
-  margin: '6px 0',
 }
