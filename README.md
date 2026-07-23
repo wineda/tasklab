@@ -30,6 +30,19 @@ npm run typecheck
 > Service Worker は本番ビルドでのみ有効です（`vite.config.ts` の `devOptions.enabled = false`）。
 > PWA 挙動（オフライン・インストール・更新トースト）の確認は `npm run build && npm run preview` で行ってください。
 
+## デプロイ（GitHub Pages）
+
+`main` へ push すると `.github/workflows/deploy.yml` が自動でビルドし、GitHub Pages へ公開します。
+
+- 公開 URL: **https://wineda.github.io/tasklab/**
+- プロジェクトサイトは `/tasklab/` 配下で配信されるため、Vite の `base` と PWA の `scope` /
+  `start_url` を `/tasklab/` に設定しています（`vite.config.ts`）。
+- 独自ドメインなどでルート（`/`）配信する場合は `BASE_PATH=/ npm run build` で上書きできます。
+
+> 初回のみ、リポジトリの **Settings → Pages → Build and deployment → Source** を
+> 「GitHub Actions」にする必要がある場合があります（ワークフローの `configure-pages` が
+> 自動有効化を試みますが、権限により手動設定が必要なことがあります）。
+
 ## プロジェクト構成
 
 ```
