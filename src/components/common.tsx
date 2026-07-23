@@ -1,8 +1,23 @@
-// 共通 UI 部品（確認ダイアログ・トースト・アイコン）
+// 共通 UI 部品（確認ダイアログ・トースト・Δピル）
 import { useEffect } from 'react'
 import { COLORS } from '../constants'
+import { signStr } from '../metrics'
 
-// --- モーダル系オーバーレイ ---
+// --- Δ ピル（一覧・集計で共有）---
+export function DeltaPill({ delta, big }: { delta: number | null; big?: boolean }) {
+  const c =
+    delta == null ? COLORS.gray : delta > 0 ? COLORS.rose : delta < 0 ? COLORS.green : COLORS.inkSoft
+  return (
+    <span
+      className="tl-mono"
+      style={{ color: c, fontWeight: 700, fontSize: big ? 30 : 12, lineHeight: 1 }}
+    >
+      {delta == null ? '—' : `Δ ${signStr(delta)}`}
+    </span>
+  )
+}
+
+// --- モーダルオーバーレイ ---
 export function Overlay({
   children,
   onBackdrop,
@@ -23,15 +38,15 @@ export function Overlay({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(20,28,24,0.45)',
+        zIndex: 30,
+        background: 'rgba(30,38,44,.45)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 20,
-        zIndex: 100,
       }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400 }}>
         {children}
       </div>
     </div>
@@ -62,28 +77,50 @@ export function ConfirmDialog({
         style={{
           background: COLORS.surface,
           borderRadius: 16,
-          padding: 20,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+          boxShadow: '0 20px 50px rgba(30,38,44,.3)',
+          padding: 18,
         }}
       >
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: message ? 8 : 16 }}>{title}</div>
+        <div className="tl-disp" style={{ fontSize: 16, fontWeight: 600, marginBottom: message ? 4 : 14 }}>
+          {title}
+        </div>
         {message && (
-          <div style={{ fontSize: 14, color: COLORS.inkSoft, marginBottom: 18, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 12.5, color: COLORS.inkSoft, margin: '0 0 14px', lineHeight: 1.6 }}>
             {message}
-          </div>
+          </p>
         )}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={btnGhost}>
-            {cancelLabel}
-          </button>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button
+            className="tl-btn"
             onClick={onConfirm}
             style={{
-              ...btnSolid,
+              flex: 1,
+              padding: '13px',
+              border: 'none',
+              borderRadius: 10,
               background: danger ? COLORS.rose : COLORS.accent,
+              color: '#fff',
+              fontSize: 14.5,
+              fontWeight: 600,
+              cursor: 'pointer',
             }}
           >
             {confirmLabel}
+          </button>
+          <button
+            className="tl-btn tl-ghost"
+            onClick={onCancel}
+            style={{
+              padding: '13px 18px',
+              border: `1px solid ${COLORS.line}`,
+              borderRadius: 10,
+              background: '#fff',
+              color: COLORS.inkSoft,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            {cancelLabel}
           </button>
         </div>
       </div>
@@ -91,7 +128,7 @@ export function ConfirmDialog({
   )
 }
 
-// --- トースト（更新通知など） ---
+// --- トースト（SW 更新通知など）---
 export function Toast({
   message,
   actionLabel,
@@ -119,7 +156,7 @@ export function Toast({
         alignItems: 'center',
         gap: 14,
         boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
-        zIndex: 200,
+        zIndex: 50,
         maxWidth: 'calc(100% - 32px)',
         fontSize: 14,
       }}
@@ -127,14 +164,16 @@ export function Toast({
       <span>{message}</span>
       {actionLabel && (
         <button
+          className="tl-btn"
           onClick={onAction}
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#8Fc0ef',
+            color: '#8fc0ef',
             fontWeight: 700,
             fontSize: 14,
             padding: 4,
+            cursor: 'pointer',
           }}
         >
           {actionLabel}
@@ -142,6 +181,7 @@ export function Toast({
       )}
       {onClose && (
         <button
+          className="tl-btn"
           onClick={onClose}
           aria-label="閉じる"
           style={{
@@ -150,6 +190,7 @@ export function Toast({
             color: 'rgba(255,255,255,0.6)',
             fontSize: 16,
             padding: 4,
+            cursor: 'pointer',
           }}
         >
           ×
@@ -157,27 +198,4 @@ export function Toast({
       )}
     </div>
   )
-}
-
-// --- 共有ボタン等スタイル ---
-export const btnSolid: React.CSSProperties = {
-  background: COLORS.accent,
-  color: '#fff',
-  border: 'none',
-  borderRadius: 10,
-  padding: '10px 16px',
-  fontWeight: 700,
-  fontSize: 14,
-  minHeight: 40,
-}
-
-export const btnGhost: React.CSSProperties = {
-  background: 'transparent',
-  color: COLORS.inkSoft,
-  border: `1px solid ${COLORS.line}`,
-  borderRadius: 10,
-  padding: '10px 16px',
-  fontWeight: 600,
-  fontSize: 14,
-  minHeight: 40,
 }

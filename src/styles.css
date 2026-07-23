@@ -9,30 +9,22 @@
 @font-face {
   font-family: 'Space Mono';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url('/fonts/space-mono.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-weight: 400 700;
+  font-weight: 400 600;
   font-display: swap;
   src: url('/fonts/inter.woff2') format('woff2');
 }
 
 :root {
   --paper: #e7ebe9;
-  --surface: #ffffff;
-  --ink: #1d2a24;
-  --ink-soft: #5c6b63;
-  --line: #d5dbd7;
+  --line: #d3d9d7;
   --accent: #2f5d8a;
-  --accent-soft: #eaf0f6;
-  --font-display: 'Space Grotesk', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP',
-    sans-serif;
-  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
 * {
@@ -43,45 +35,105 @@ html,
 body {
   margin: 0;
   padding: 0;
+  background: var(--paper);
 }
 
-body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-body);
+/* アプリ全体: 紙色 + うっすらとした方眼グリッド背景（モック踏襲） */
+.tl-root {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP',
+    sans-serif;
+  color: #1e262c;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--paper);
+  background-image: linear-gradient(#d3d9d755 1px, transparent 1px),
+    linear-gradient(90deg, #d3d9d755 1px, transparent 1px);
+  background-size: 22px 22px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior-y: none;
 }
 
-#root {
-  min-height: 100vh;
-  min-height: 100dvh;
-}
-
-button {
-  font-family: inherit;
-  cursor: pointer;
-}
-
-input,
-textarea {
-  font-family: inherit;
-}
-
-/* 数値・等幅表示 */
-.mono {
-  font-family: var(--font-mono);
+.tl-mono {
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   font-variant-numeric: tabular-nums;
 }
+.tl-disp {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+}
 
-/* フォーカスリング（仕様書 §7）: キーボード操作の可視化 */
-:focus-visible {
+.tl-btn {
+  transition: transform 0.1s ease, background-color 0.15s, border-color 0.15s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tl-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.tl-btn:disabled {
+  opacity: 0.4;
+}
+
+.tl-card {
+  transition: transform 0.1s ease, box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+.tl-card:active {
+  transform: scale(0.99);
+}
+
+.tl-bar {
+  transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.tl-ghost:active {
+  background: #d3d9d755;
+}
+
+.tl-input {
+  font-family: inherit;
+}
+.tl-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px #2f5d8a22;
+}
+.tl-input::-webkit-outer-spin-button,
+.tl-input::-webkit-inner-spin-button {
+  opacity: 0.35;
+}
+
+*:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-:focus:not(:focus-visible) {
-  outline: none;
+
+textarea {
+  font-family: 'Inter', system-ui, sans-serif;
+  resize: vertical;
+}
+
+@keyframes tl-blink {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes tl-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.tl-view {
+  animation: tl-in 0.22s ease;
 }
 
 /* prefers-reduced-motion 尊重（仕様書 §7）: 全アニメーション無効化 */
@@ -89,15 +141,7 @@ textarea {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
   }
-}
-
-/* ドラッグ中のテキスト選択抑止（仕様書 §4.3） */
-.dragging-active {
-  user-select: none;
-  -webkit-user-select: none;
 }

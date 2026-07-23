@@ -109,53 +109,57 @@ export default function App() {
     setView('list')
   }
 
+  const pendingDeleteRun = data.runs.find((r) => r.id === pendingDeleteId) ?? null
+
   return (
-    <>
-      {view === 'list' && (
-        <RunList
-          runs={data.runs}
-          onOpen={(id) => {
-            setCurrentId(id)
-            setView('detail')
-          }}
-          onNew={createRun}
-          onDuplicate={(id) => duplicateRun(id, false)}
-          onDelete={(id) => setPendingDeleteId(id)}
-          onOpenSettings={() => setView('settings')}
-        />
-      )}
+    <div className="tl-root">
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 16px 72px' }}>
+        {view === 'list' && (
+          <RunList
+            runs={data.runs}
+            onOpen={(id) => {
+              setCurrentId(id)
+              setView('detail')
+            }}
+            onNew={createRun}
+            onDuplicate={(id) => duplicateRun(id, false)}
+            onDelete={(id) => setPendingDeleteId(id)}
+            onOpenSettings={() => setView('settings')}
+          />
+        )}
 
-      {view === 'detail' && currentRun && (
-        <RunDetail
-          key={currentRun.id}
-          savedRun={currentRun}
-          promptTemplate={data.settings.promptTemplate}
-          onSave={(updated) => saveRun(updated)}
-          onDuplicate={() => duplicateRun(currentRun.id, true)}
-          onDelete={() => deleteRun(currentRun.id)}
-          onBack={() => setView('list')}
-        />
-      )}
+        {view === 'detail' && currentRun && (
+          <RunDetail
+            key={currentRun.id}
+            savedRun={currentRun}
+            promptTemplate={data.settings.promptTemplate}
+            onSave={(updated) => saveRun(updated)}
+            onDuplicate={() => duplicateRun(currentRun.id, true)}
+            onDelete={() => deleteRun(currentRun.id)}
+            onBack={() => setView('list')}
+          />
+        )}
 
-      {view === 'settings' && (
-        <SettingsView
-          promptTemplate={data.settings.promptTemplate}
-          onSavePrompt={savePrompt}
-          getData={() => data}
-          onImport={importData}
-          onBack={() => setView('list')}
-        />
-      )}
+        {view === 'settings' && (
+          <SettingsView
+            promptTemplate={data.settings.promptTemplate}
+            onSavePrompt={savePrompt}
+            getData={() => data}
+            onImport={importData}
+            onBack={() => setView('list')}
+          />
+        )}
+      </div>
 
       {/* 一覧からの削除確認 */}
-      {pendingDeleteId && (
+      {pendingDeleteRun && (
         <ConfirmDialog
-          title="このランを削除しますか？"
+          title={`「${pendingDeleteRun.name}」を削除しますか？`}
           message="この操作は取り消せません。"
           confirmLabel="削除する"
           danger
           onConfirm={() => {
-            deleteRun(pendingDeleteId)
+            deleteRun(pendingDeleteRun.id)
             setPendingDeleteId(null)
           }}
           onCancel={() => setPendingDeleteId(null)}
@@ -171,6 +175,6 @@ export default function App() {
           onClose={() => setUpdateReload(null)}
         />
       )}
-    </>
+    </div>
   )
 }
