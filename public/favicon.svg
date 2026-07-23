@@ -1,0 +1,5 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#2F5D8A"/>
+  <!-- 白の Δ（デルタ） -->
+  <path d="M256 118 L400 394 L112 394 Z" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- maskable: セーフゾーン内に収まるよう Δ を小さめに配置 -->
+  <rect width="512" height="512" fill="#2F5D8A"/>
+  <path d="M256 168 L360 366 L152 366 Z" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linejoin="round"/>
+</svg>
