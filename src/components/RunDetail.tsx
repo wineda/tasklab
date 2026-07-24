@@ -1,5 +1,5 @@
 // ラン詳細画面（仕様書 §3.2 / モック DetailScreen 準拠）
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLORS } from '../constants'
 import { barMax, computeMetrics, fmt } from '../metrics'
 import { buildPrompt } from '../prompt'
@@ -70,6 +70,75 @@ export function RunDetail({
     removeTask: (id: string) => up((r) => ({ ...r, tasks: r.tasks.filter((x) => x.id !== id) })),
     reorder: (next: Task[]) => up((r) => ({ ...r, tasks: next })),
   }
+
+  // --- ストップウォッチ計測（実測の自動記録, 仕様書 §9）---
+  // 同時に走るタイマーは 1 つ。run = 実行中のタスクと開始時刻。accSec = 一時停止で貯めた秒。
+  const [run, setRun] = useState<{ id: string; startedAt: number } | null>(null)
+  const [accSec, setAccSec] = useState<Record<string, number>>({})
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  const setActualNum = (id: string, n: number | null) =>
+    up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, actualMin: n } : x)) }))
+
+  // 実行中は 0.5 秒ごとに現在時刻を更新し、分が変わったら実測へ反映
+  useEffect(() => {
+    if (!run) return
+    const iv = window.setInterval(() => {
+      const t = Date.now()
+      setNowMs(t)
+      const sec = (accSec[run.id] ?? 0) + (t - run.startedAt) / 1000
+      const mins = Math.round(sec / 60)
+      setDraft((d) => {
+        const task = d.tasks.find((x) => x.id === run.id)
+        if (!task || task.actualMin === mins) return d
+        return { ...d, tasks: d.tasks.map((x) => (x.id === run.id ? { ...x, actualMin: mins } : x)) }
+      })
+    }, 500)
+    return () => window.clearInterval(iv)
+  }, [run, accSec])
+
+  const elapsedOf = (id: string): number => {
+    const base = accSec[id] ?? 0
+    const live = run?.id === id ? Math.max(0, (nowMs - run.startedAt) / 1000) : 0
+    return base + live
+  }
+  const timerActive = (id: string) => run?.id === id || (accSec[id] ?? 0) > 0
+
+  const pauseInto = (id: string, at: number) => {
+    // 実行中タスクの経過を accSec に確定し、実測へ反映
+    const sec = (accSec[id] ?? 0) + (at - (run?.startedAt ?? at)) / 1000
+    setAccSec((a) => ({ ...a, [id]: sec }))
+    setActualNum(id, Math.round(sec / 60))
+  }
+
+  const toggleTimer = (id: string) => {
+    const t = Date.now()
+    if (run?.id === id) {
+      pauseInto(id, t)
+      setRun(null)
+    } else {
+      if (run) pauseInto(run.id, t) // 別タスクが走っていれば確定
+      setRun({ id, startedAt: t })
+      setNowMs(t)
+    }
+  }
+  const resetTimer = (id: string) => {
+    setAccSec((a) => {
+      const n = { ...a }
+      delete n[id]
+      return n
+    })
+    if (run?.id === id) setRun(null)
+    setActualNum(id, null)
+  }
+
+  const elapsedMap = useMemo(() => {
+    const map: Record<string, number | null> = {}
+    for (const t of draft.tasks) map[t.id] = timerActive(t.id) ? elapsedOf(t.id) : null
+    return map
+    // nowMs / run / accSec の変化で更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.tasks, run, accSec, nowMs])
 
   const dirty = stripHist(draft) !== stripHist(saved)
 
@@ -270,11 +339,23 @@ export function RunDetail({
           <TaskList
             tasks={tasks}
             maxMin={maxMin}
+            runningId={run?.id ?? null}
+            elapsedMap={elapsedMap}
             onName={ops.setName}
             onEstimate={ops.setEstimate}
             onActual={ops.setActual}
-            onRemove={ops.removeTask}
+            onRemove={(id) => {
+              if (run?.id === id) setRun(null)
+              setAccSec((a) => {
+                const n = { ...a }
+                delete n[id]
+                return n
+              })
+              ops.removeTask(id)
+            }}
             onReorder={ops.reorder}
+            onTimerToggle={toggleTimer}
+            onTimerReset={resetTimer}
           />
         )}
         <NewTaskRow nextIndex={tasks.length + 1} onAdd={ops.addTask} />
