@@ -1,4 +1,4 @@
-// タスク行 + 長押しドラッグ並べ替え（仕様書 §3.2 / §4.2 / §4.3、モック TaskList/TaskRow 準拠）
+// タスク行 + 長押しドラッグ並べ替え + ストップウォッチ計測（仕様書 §3.2 / §4.2 / §4.3 / §9）
 import { useEffect, useRef, useState } from 'react'
 import { COLORS } from '../constants'
 import { signStr } from '../metrics'
@@ -11,6 +11,14 @@ function scalePct(v: number, maxMin: number): string {
   return `${Math.max(2, (v / (maxMin || 1)) * 100)}%`
 }
 
+// 経過秒 → mm:ss
+function mmss(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  const m = Math.floor(s / 60)
+  const ss = s % 60
+  return `${m}:${String(ss).padStart(2, '0')}`
+}
+
 // --- 1 タスク行 ---
 function TaskRow({
   task,
@@ -18,22 +26,30 @@ function TaskRow({
   maxMin,
   isDragging,
   isArmed,
+  elapsedSec,
+  running,
   onRowDown,
   onName,
   onEstimate,
   onActual,
   onRemove,
+  onTimerToggle,
+  onTimerReset,
 }: {
   task: Task
   index: number
   maxMin: number
   isDragging: boolean
   isArmed: boolean
+  elapsedSec: number | null // null = 未計測（タイマー未使用）
+  running: boolean
   onRowDown: (e: React.PointerEvent, id: string) => void
   onName: (id: string, v: string) => void
   onEstimate: (id: string, v: string) => void
   onActual: (id: string, v: string) => void
   onRemove: (id: string) => void
+  onTimerToggle: (id: string) => void
+  onTimerReset: (id: string) => void
 }) {
   const est = task.estimateMin
   const act = task.actualMin
@@ -41,6 +57,7 @@ function TaskRow({
   const delta = hasAct ? act - est : null
   const dColor =
     delta == null ? COLORS.gray : delta > 0 ? COLORS.rose : delta < 0 ? COLORS.green : COLORS.inkSoft
+  const stop = (e: React.PointerEvent) => e.stopPropagation()
 
   return (
     <div
@@ -78,7 +95,7 @@ function TaskRow({
           <input
             value={task.name}
             onChange={(e) => onName(task.id, e.target.value)}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={stop}
             placeholder="タスク名"
             aria-label="タスク名"
             style={{
@@ -100,7 +117,7 @@ function TaskRow({
           <button
             className="tl-btn tl-ghost"
             onClick={() => onRemove(task.id)}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={stop}
             title="削除"
             aria-label="タスクを削除"
             style={{
@@ -120,8 +137,8 @@ function TaskRow({
           </button>
         </div>
 
-        {/* 2 行目: バー / 計画入力 / 実測入力 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        {/* 2 行目: バー / 計画入力 / 実測入力 / ストップウォッチ */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
@@ -156,12 +173,12 @@ function TaskRow({
             inputMode="numeric"
             value={est == null ? '' : est}
             onChange={(e) => onEstimate(task.id, e.target.value)}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={stop}
             placeholder="計画"
             title="計画（見積もり）を編集"
             style={{
-              width: 50,
-              padding: '6px 6px',
+              width: 46,
+              padding: '6px 5px',
               textAlign: 'right',
               fontSize: 13,
               border: `1px solid ${COLORS.plan}44`,
@@ -172,31 +189,104 @@ function TaskRow({
             }}
           />
           <span style={{ color: COLORS.line, flexShrink: 0 }}>/</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <input
-              className="tl-input tl-mono"
-              type="number"
-              min="0"
-              inputMode="numeric"
-              value={act == null ? '' : act}
-              onChange={(e) => onActual(task.id, e.target.value)}
-              onPointerDown={(e) => e.stopPropagation()}
-              placeholder="実測"
-              aria-label="実測（分）"
-              style={{
-                width: 50,
-                padding: '6px 6px',
-                textAlign: 'right',
-                fontSize: 13,
-                border: `1px solid ${COLORS.line}`,
-                borderRadius: 7,
-                background: '#fff',
-                color: COLORS.actual,
-              }}
-            />
-            <span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>分</span>
-          </div>
+          <input
+            className="tl-input tl-mono"
+            type="number"
+            min="0"
+            inputMode="numeric"
+            value={act == null ? '' : act}
+            onChange={(e) => onActual(task.id, e.target.value)}
+            onPointerDown={stop}
+            placeholder="実測"
+            aria-label="実測（分）"
+            style={{
+              width: 46,
+              padding: '6px 5px',
+              textAlign: 'right',
+              fontSize: 13,
+              border: running ? `1px solid ${COLORS.actual}` : `1px solid ${COLORS.line}`,
+              borderRadius: 7,
+              background: running ? `${COLORS.actual}0e` : '#fff',
+              color: COLORS.actual,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: 10.5, color: COLORS.inkSoft, flexShrink: 0 }}>分</span>
+          <button
+            className="tl-btn"
+            onClick={() => onTimerToggle(task.id)}
+            onPointerDown={stop}
+            aria-label={running ? '計測を一時停止' : '実測を計測開始'}
+            title={running ? '一時停止' : 'ストップウォッチで実測を計測'}
+            style={{
+              width: 30,
+              height: 30,
+              flexShrink: 0,
+              borderRadius: 8,
+              border: `1px solid ${running ? COLORS.actual : COLORS.accent}`,
+              background: running ? COLORS.actual : '#fff',
+              color: running ? '#fff' : COLORS.accent,
+              fontSize: 12,
+              lineHeight: 1,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+            }}
+          >
+            {running ? '❚❚' : '▶'}
+          </button>
         </div>
+
+        {/* 3 行目（計測中／一時停止中のみ）: 経過時間 + リセット */}
+        {elapsedSec != null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, paddingLeft: 2 }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 700,
+                color: running ? COLORS.actual : COLORS.inkSoft,
+              }}
+            >
+              <span
+                className={running ? 'tl-pulse' : undefined}
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: running ? COLORS.actual : COLORS.gray,
+                  display: 'inline-block',
+                }}
+              />
+              <span className="tl-mono">{mmss(elapsedSec)}</span>
+            </span>
+            <span style={{ fontSize: 11, color: COLORS.gray }}>
+              {running ? '計測中…（実測に自動反映）' : '一時停止中'}
+            </span>
+            <button
+              className="tl-btn tl-ghost"
+              onClick={() => onTimerReset(task.id)}
+              onPointerDown={stop}
+              style={{
+                marginLeft: 'auto',
+                border: `1px solid ${COLORS.line}`,
+                background: '#fff',
+                color: COLORS.inkSoft,
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 7,
+                padding: '4px 9px',
+                cursor: 'pointer',
+              }}
+            >
+              リセット
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -206,19 +296,27 @@ function TaskRow({
 export function TaskList({
   tasks,
   maxMin,
+  runningId,
+  elapsedMap,
   onName,
   onEstimate,
   onActual,
   onRemove,
   onReorder,
+  onTimerToggle,
+  onTimerReset,
 }: {
   tasks: Task[]
   maxMin: number
+  runningId: string | null
+  elapsedMap: Record<string, number | null>
   onName: (id: string, v: string) => void
   onEstimate: (id: string, v: string) => void
   onActual: (id: string, v: string) => void
   onRemove: (id: string) => void
   onReorder: (next: Task[]) => void
+  onTimerToggle: (id: string) => void
+  onTimerReset: (id: string) => void
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [armedId, setArmedId] = useState<string | null>(null)
@@ -281,7 +379,6 @@ export function TaskList({
   }
 
   const handleMove = (e: React.PointerEvent) => {
-    // 長押し待機中に動いたら＝スクロール。ドラッグ化を中止
     if (pendRef.current && !dragId) {
       const dx = e.clientX - pendRef.current.x
       const dy = e.clientY - pendRef.current.y
@@ -315,11 +412,15 @@ export function TaskList({
           maxMin={maxMin}
           isDragging={dragId === t.id}
           isArmed={armedId === t.id && !dragId}
+          elapsedSec={elapsedMap[t.id] ?? null}
+          running={runningId === t.id}
           onRowDown={handleRowDown}
           onName={onName}
           onEstimate={onEstimate}
           onActual={onActual}
           onRemove={onRemove}
+          onTimerToggle={onTimerToggle}
+          onTimerReset={onTimerReset}
         />
       ))}
     </div>
