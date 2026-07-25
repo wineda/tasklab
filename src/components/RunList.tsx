@@ -13,11 +13,12 @@ const miniBtn: React.CSSProperties = {
   border: 'none',
   background: 'transparent',
   color: COLORS.inkSoft,
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 500,
   cursor: 'pointer',
-  padding: '4px 6px',
+  padding: '3px 6px',
   borderRadius: 6,
+  flexShrink: 0,
 }
 
 export function RunList({
@@ -188,93 +189,28 @@ function RunCard({
       style={{
         background: COLORS.surface,
         border: `1px solid ${COLORS.line}`,
-        borderRadius: 14,
-        padding: '15px 16px',
-        marginBottom: 11,
+        borderRadius: 12,
+        padding: '10px 12px',
+        marginBottom: 8,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            className="tl-disp"
-            style={{
-              fontSize: 17,
-              fontWeight: 600,
-              color: COLORS.ink,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {run.name || '無題のラン'}
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: run.description ? COLORS.inkSoft : COLORS.gray,
-              marginTop: 4,
-              lineHeight: 1.5,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {run.description || '説明なし'}
-          </div>
+      {/* 1 行目: ラン名 + 操作（複製 / 削除）*/}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div
+          className="tl-disp"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 15.5,
+            fontWeight: 600,
+            color: COLORS.ink,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {run.name || '無題のラン'}
         </div>
-        <span className="tl-disp" style={{ fontSize: 22, color: COLORS.gray, lineHeight: 1 }}>
-          ›
-        </span>
-      </div>
-
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}
-      >
-        <span className="tl-mono" style={{ fontSize: 11, color: COLORS.gray }}>
-          {mdate(run.createdAt)}
-        </span>
-        <span className="tl-mono" style={{ fontSize: 11, color: COLORS.inkSoft }}>
-          {total} タスク
-        </span>
-        {total > 0 &&
-          (done > 0 ? (
-            <>
-              <span style={{ color: COLORS.line }}>·</span>
-              <span className="tl-mono" style={{ fontSize: 11, color: COLORS.inkSoft }}>
-                {done}/{total} 計測
-              </span>
-              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <DeltaPill delta={delta} />
-                {absDelta != null && absDelta !== Math.abs(delta ?? 0) && (
-                  <span
-                    className="tl-mono"
-                    style={{ fontSize: 11, fontWeight: 700, color: COLORS.inkSoft }}
-                  >
-                    ±{fmt(absDelta)}
-                  </span>
-                )}
-              </span>
-            </>
-          ) : (
-            <>
-              <span style={{ color: COLORS.line }}>·</span>
-              <span className="tl-mono" style={{ fontSize: 11, color: COLORS.gray }}>
-                未計測
-              </span>
-            </>
-          ))}
-      </div>
-
-      <div
-        style={{
-          display: 'flex',
-          gap: 14,
-          marginTop: 12,
-          paddingTop: 11,
-          borderTop: `1px solid ${COLORS.line}`,
-        }}
-      >
         <button
           className="tl-btn tl-ghost"
           onClick={(e) => {
@@ -295,6 +231,62 @@ function RunCard({
         >
           削除
         </button>
+      </div>
+
+      {/* 2 行目: 日付 · タスク数 · 計測 …… 右: Δ / ±ばらつき */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            overflow: 'hidden',
+          }}
+        >
+          <span className="tl-mono" style={{ fontSize: 11, color: COLORS.gray, flexShrink: 0 }}>
+            {mdate(run.createdAt)}
+          </span>
+          <span className="tl-mono" style={{ fontSize: 11, color: COLORS.inkSoft, flexShrink: 0 }}>
+            {total} タスク
+          </span>
+          {total > 0 && (
+            <>
+              <span style={{ color: COLORS.line, flexShrink: 0 }}>·</span>
+              <span
+                className="tl-mono"
+                style={{ fontSize: 11, color: done > 0 ? COLORS.inkSoft : COLORS.gray, flexShrink: 0 }}
+              >
+                {done > 0 ? `${done}/${total} 計測` : '未計測'}
+              </span>
+            </>
+          )}
+          {run.description && (
+            <span
+              style={{
+                fontSize: 11,
+                color: COLORS.gray,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+              }}
+            >
+              · {run.description}
+            </span>
+          )}
+        </div>
+        {done > 0 && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+            <DeltaPill delta={delta} />
+            {absDelta != null && absDelta !== Math.abs(delta ?? 0) && (
+              <span className="tl-mono" style={{ fontSize: 11, fontWeight: 700, color: COLORS.inkSoft }}>
+                ±{fmt(absDelta)}
+              </span>
+            )}
+          </span>
+        )}
       </div>
     </div>
   )
