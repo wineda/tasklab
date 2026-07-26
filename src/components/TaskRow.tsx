@@ -1,7 +1,8 @@
 // タスク行 + 長押しドラッグ並べ替え + ストップウォッチ計測（仕様書 §3.2 / §4.2 / §4.3 / §9）
 import { useEffect, useRef, useState } from 'react'
 import { COLORS } from '../constants'
-import { signStr } from '../metrics'
+import { fmt, isSection, signStr } from '../metrics'
+import type { SectionTotals } from '../metrics'
 import type { Task } from '../types'
 
 const LONG_PRESS_MS = 380
@@ -331,12 +332,127 @@ function TaskRow({
   )
 }
 
+// --- セクション見出し行 ---
+function SectionRow({
+  task,
+  totals,
+  isDragging,
+  isArmed,
+  onRowDown,
+  onName,
+  onRemove,
+}: {
+  task: Task
+  totals: SectionTotals | undefined
+  isDragging: boolean
+  isArmed: boolean
+  onRowDown: (e: React.PointerEvent, id: string) => void
+  onName: (id: string, v: string) => void
+  onRemove: (id: string) => void
+}) {
+  const t = totals ?? { count: 0, measured: 0, plan: 0, actual: 0, delta: 0 }
+  const dColor = t.delta > 0 ? COLORS.rose : t.delta < 0 ? COLORS.green : COLORS.inkSoft
+  const stop = (e: React.PointerEvent) => e.stopPropagation()
+
+  return (
+    <div
+      data-row
+      onPointerDown={(e) => onRowDown(e, task.id)}
+      onContextMenu={(e) => {
+        if (isDragging || isArmed) e.preventDefault()
+      }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 12px',
+        background: isDragging ? '#fff' : isArmed ? `${COLORS.accent}14` : `${COLORS.accent}0a`,
+        borderTop: `2px solid ${isDragging ? 'transparent' : COLORS.line}`,
+        borderBottom: isDragging ? '1px solid transparent' : `1px solid ${COLORS.line}`,
+        boxShadow: isDragging
+          ? `0 14px 32px rgba(30,38,44,.22), 0 3px 8px rgba(30,38,44,.12), 0 0 0 1.5px ${COLORS.accent}55`
+          : 'none',
+        borderRadius: isDragging ? 12 : 0,
+        position: 'relative',
+        zIndex: isDragging ? 3 : 1,
+        transform: isDragging ? 'scale(1.02) rotate(-0.4deg)' : 'none',
+        transition:
+          'box-shadow .15s ease, transform .15s ease, border-radius .15s ease, background-color .2s ease',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+        cursor: isDragging ? 'grabbing' : 'default',
+      }}
+    >
+      <span aria-hidden style={{ color: COLORS.accent, fontSize: 11, flexShrink: 0 }}>
+        §
+      </span>
+      <input
+        value={task.name}
+        onChange={(e) => onName(task.id, e.target.value)}
+        onPointerDown={stop}
+        placeholder="セクション名"
+        aria-label="セクション名"
+        className="tl-disp"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          border: 'none',
+          background: 'transparent',
+          fontSize: 13,
+          fontWeight: 700,
+          letterSpacing: '0.02em',
+          color: COLORS.accent,
+          padding: 0,
+          WebkitUserSelect: 'text',
+          userSelect: 'text',
+        }}
+      />
+      {/* セクション合計（計画 / 実測 / Δ） */}
+      <span
+        className="tl-mono"
+        style={{ fontSize: 11, color: COLORS.inkSoft, flexShrink: 0, display: 'flex', gap: 7 }}
+      >
+        <span style={{ color: COLORS.plan }}>{fmt(t.plan)}</span>
+        <span style={{ color: COLORS.gray }}>/</span>
+        <span style={{ color: COLORS.actual }}>{t.measured > 0 ? fmt(t.actual) : '—'}</span>
+        {t.measured > 0 && (
+          <span style={{ fontWeight: 700, color: dColor }}>Δ {signStr(t.delta)}</span>
+        )}
+      </span>
+      <button
+        className="tl-btn tl-ghost"
+        onClick={() => onRemove(task.id)}
+        onPointerDown={stop}
+        title="セクションを削除（タスクは残ります）"
+        aria-label="セクションを削除"
+        style={{
+          border: 'none',
+          background: 'transparent',
+          color: COLORS.gray,
+          fontSize: 17,
+          cursor: 'pointer',
+          width: 24,
+          height: 24,
+          borderRadius: 6,
+          padding: 0,
+          lineHeight: 1,
+          flexShrink: 0,
+        }}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
 // --- 長押しドラッグ対応リスト ---
 export function TaskList({
   tasks,
   maxMin,
   runningId,
   elapsedMap,
+  sectionTotals,
   onName,
   onEstimate,
   onActual,
@@ -350,6 +466,7 @@ export function TaskList({
   maxMin: number
   runningId: string | null
   elapsedMap: Record<string, number | null>
+  sectionTotals: Record<string, SectionTotals>
   onName: (id: string, v: string) => void
   onEstimate: (id: string, v: string) => void
   onActual: (id: string, v: string) => void
@@ -445,33 +562,55 @@ export function TaskList({
 
   return (
     <div ref={containerRef} onPointerMove={handleMove} onPointerUp={handleUp} onPointerCancel={handleUp}>
-      {tasks.map((t, i) => {
-        const linked = i > 0 && !!t.parallel
-        const nextLinked = i < tasks.length - 1 && !!tasks[i + 1].parallel
-        return (
-          <TaskRow
-            key={t.id}
-            task={t}
-            index={i}
-            maxMin={maxMin}
-            isDragging={dragId === t.id}
-            isArmed={armedId === t.id && !dragId}
-            elapsedSec={elapsedMap[t.id] ?? null}
-            running={runningId === t.id}
-            canLink={i > 0}
-            linked={linked}
-            inGroup={linked || nextLinked}
-            onRowDown={handleRowDown}
-            onName={onName}
-            onEstimate={onEstimate}
-            onActual={onActual}
-            onRemove={onRemove}
-            onTimerToggle={onTimerToggle}
-            onTimerReset={onTimerReset}
-            onToggleParallel={onToggleParallel}
-          />
-        )
-      })}
+      {(() => {
+        let taskNo = 0
+        return tasks.map((t, i) => {
+          if (isSection(t)) {
+            return (
+              <SectionRow
+                key={t.id}
+                task={t}
+                totals={sectionTotals[t.id]}
+                isDragging={dragId === t.id}
+                isArmed={armedId === t.id && !dragId}
+                onRowDown={handleRowDown}
+                onName={onName}
+                onRemove={onRemove}
+              />
+            )
+          }
+          taskNo += 1
+          const prev = i > 0 ? tasks[i - 1] : null
+          const next = i < tasks.length - 1 ? tasks[i + 1] : null
+          // 並行リンクはセクションをまたげない
+          const canLink = prev != null && !isSection(prev)
+          const linked = canLink && !!t.parallel
+          const nextLinked = next != null && !isSection(next) && !!next.parallel
+          return (
+            <TaskRow
+              key={t.id}
+              task={t}
+              index={taskNo - 1}
+              maxMin={maxMin}
+              isDragging={dragId === t.id}
+              isArmed={armedId === t.id && !dragId}
+              elapsedSec={elapsedMap[t.id] ?? null}
+              running={runningId === t.id}
+              canLink={canLink}
+              linked={linked}
+              inGroup={linked || nextLinked}
+              onRowDown={handleRowDown}
+              onName={onName}
+              onEstimate={onEstimate}
+              onActual={onActual}
+              onRemove={onRemove}
+              onTimerToggle={onTimerToggle}
+              onTimerReset={onTimerReset}
+              onToggleParallel={onToggleParallel}
+            />
+          )
+        })
+      })()}
     </div>
   )
 }

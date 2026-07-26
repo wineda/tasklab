@@ -8,6 +8,7 @@ export interface RunTaskJson {
   estimate_min: number
   actual_min: number | null
   parallel_with_prev?: boolean // 直前のタスクと並行（並行グループがある場合のみ付与）
+  section?: string | null // 属するセクション名（セクションがある場合のみ付与）
 }
 
 export interface RunDataJson {
@@ -17,20 +18,32 @@ export interface RunDataJson {
 }
 
 export function buildRunData(run: Run): RunDataJson {
-  // 並行グループが使われている場合のみ parallel_with_prev を含める
+  // 並行グループ / セクションが使われている場合のみ、それぞれのフィールドを含める
   const hasParallel = run.tasks.some((t, i) => i > 0 && t.parallel)
+  const hasSections = run.tasks.some((t) => t.kind === 'section')
+  const out: RunTaskJson[] = []
+  let currentSection: string | null = null
+  let prevWasTask = false
+  for (const t of run.tasks) {
+    if (t.kind === 'section') {
+      currentSection = t.name
+      prevWasTask = false
+      continue
+    }
+    const task: RunTaskJson = {
+      name: t.name,
+      estimate_min: t.estimateMin,
+      actual_min: t.actualMin,
+    }
+    if (hasParallel) task.parallel_with_prev = prevWasTask && !!t.parallel
+    if (hasSections) task.section = currentSection
+    out.push(task)
+    prevWasTask = true
+  }
   return {
     run_name: run.name,
     description: run.description,
-    tasks: run.tasks.map((t, i) => {
-      const task: RunTaskJson = {
-        name: t.name,
-        estimate_min: t.estimateMin,
-        actual_min: t.actualMin,
-      }
-      if (hasParallel) task.parallel_with_prev = i > 0 && !!t.parallel
-      return task
-    }),
+    tasks: out,
   }
 }
 

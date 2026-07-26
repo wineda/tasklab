@@ -6,6 +6,7 @@ export interface Task {
   estimateMin: number // 見積もり（分）
   actualMin: number | null // 実測（分）。null = 未計測
   parallel?: boolean // 直前のタスクと並行（同じ並行グループ）。先頭タスクでは無視
+  kind?: 'task' | 'section' // 'section' = セクション見出し行（区切り）。省略時は 'task'
 }
 
 export interface HistoryEntry {
