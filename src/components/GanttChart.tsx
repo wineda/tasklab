@@ -14,8 +14,9 @@ function pickStep(total: number): number {
   return 1920
 }
 
-export function GanttChart({ tasks }: { tasks: Task[] }) {
-  const [open, setOpen] = useState(true)
+export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; collapsible?: boolean }) {
+  const [collapsed, setCollapsed] = useState(false)
+  const open = !collapsible || !collapsed
   const schedule = useMemo(() => computeSchedule(tasks), [tasks])
   const { rows, planEnd, actualEnd } = schedule
   const total = Math.max(planEnd, actualEnd, 1)
@@ -37,8 +38,9 @@ export function GanttChart({ tasks }: { tasks: Task[] }) {
     >
       <button
         className="tl-btn tl-ghost"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => collapsible && setCollapsed((v) => !v)}
         aria-expanded={open}
+        disabled={!collapsible}
         style={{
           width: '100%',
           display: 'flex',
@@ -47,7 +49,8 @@ export function GanttChart({ tasks }: { tasks: Task[] }) {
           padding: '11px 14px',
           border: 'none',
           background: 'transparent',
-          cursor: 'pointer',
+          cursor: collapsible ? 'pointer' : 'default',
+          opacity: 1,
         }}
       >
         <span
@@ -61,7 +64,9 @@ export function GanttChart({ tasks }: { tasks: Task[] }) {
             計画<span style={{ color: COLORS.plan }}> ■</span>　実測
             <span style={{ color: COLORS.actual }}> ■</span>
           </span>
-          <span style={{ color: COLORS.gray, fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+          {collapsible && (
+            <span style={{ color: COLORS.gray, fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+          )}
         </span>
       </button>
 
