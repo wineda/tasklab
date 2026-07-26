@@ -332,23 +332,159 @@ function TaskRow({
   )
 }
 
+// --- 新規タスク行（リスト末尾に常設 / セクション内はインライン表示）---
+export function NewTaskRow({
+  nextIndex,
+  onAdd,
+  autoFocus,
+  onClose,
+}: {
+  nextIndex: number
+  onAdd: (name: string, est: number) => void
+  autoFocus?: boolean
+  onClose?: () => void
+}) {
+  const [name, setName] = useState('')
+  const [est, setEst] = useState('')
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (autoFocus) nameRef.current?.focus()
+  }, [autoFocus])
+
+  const ready = name.trim() !== '' && parseInt(est, 10) > 0
+  const submit = () => {
+    const n = name.trim()
+    const e = parseInt(est, 10)
+    if (!n || !e || e <= 0) return
+    onAdd(n, e)
+    setName('')
+    setEst('')
+    nameRef.current?.focus()
+  }
+
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: `${COLORS.plan}06` }}
+    >
+      <span className="tl-mono" style={{ fontSize: 10.5, color: COLORS.gray, flexShrink: 0 }}>
+        {String(nextIndex).padStart(2, '0')}
+      </span>
+      <input
+        ref={nameRef}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        placeholder="新しいタスク…"
+        aria-label="新しいタスク名"
+        className="tl-input"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: '9px 10px',
+          border: `1px solid ${COLORS.line}`,
+          borderRadius: 8,
+          fontSize: 14,
+          background: '#fff',
+          color: COLORS.ink,
+        }}
+      />
+      <input
+        className="tl-input tl-mono"
+        type="number"
+        min="1"
+        inputMode="numeric"
+        value={est}
+        onChange={(e) => setEst(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        placeholder="30"
+        aria-label="見積もり（分）"
+        style={{
+          width: 56,
+          padding: '9px 6px',
+          textAlign: 'right',
+          border: `1px solid ${COLORS.line}`,
+          borderRadius: 8,
+          fontSize: 14,
+          background: '#fff',
+          color: COLORS.plan,
+          flexShrink: 0,
+        }}
+      />
+      <span style={{ fontSize: 10.5, color: COLORS.inkSoft, flexShrink: 0 }}>分</span>
+      <button
+        className="tl-btn"
+        onClick={submit}
+        disabled={!ready}
+        aria-label="タスクを追加"
+        style={{
+          width: 36,
+          height: 36,
+          border: 'none',
+          borderRadius: 9,
+          flexShrink: 0,
+          background: ready ? COLORS.accent : COLORS.line,
+          color: '#fff',
+          fontSize: 19,
+          fontWeight: 600,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+          lineHeight: 1,
+        }}
+      >
+        ＋
+      </button>
+      {onClose && (
+        <button
+          className="tl-btn tl-ghost"
+          onClick={onClose}
+          aria-label="追加をやめる"
+          title="閉じる"
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: COLORS.gray,
+            fontSize: 16,
+            cursor: 'pointer',
+            width: 24,
+            height: 24,
+            borderRadius: 6,
+            padding: 0,
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
 // --- セクション見出し行 ---
 function SectionRow({
   task,
   totals,
   isDragging,
   isArmed,
+  adding,
   onRowDown,
   onName,
   onRemove,
+  onToggleAdd,
 }: {
   task: Task
   totals: SectionTotals | undefined
   isDragging: boolean
   isArmed: boolean
+  adding: boolean
   onRowDown: (e: React.PointerEvent, id: string) => void
   onName: (id: string, v: string) => void
   onRemove: (id: string) => void
+  onToggleAdd: (id: string) => void
 }) {
   const t = totals ?? { count: 0, measured: 0, plan: 0, actual: 0, delta: 0 }
   const dColor = t.delta > 0 ? COLORS.rose : t.delta < 0 ? COLORS.green : COLORS.inkSoft
@@ -421,6 +557,33 @@ function SectionRow({
         )}
       </span>
       <button
+        className="tl-btn"
+        onClick={() => onToggleAdd(task.id)}
+        onPointerDown={stop}
+        title="このセクションにタスクを追加"
+        aria-label={`${task.name || 'セクション'}にタスクを追加`}
+        aria-expanded={adding}
+        style={{
+          flexShrink: 0,
+          width: 24,
+          height: 24,
+          borderRadius: 7,
+          border: `1px solid ${adding ? COLORS.accent : `${COLORS.accent}55`}`,
+          background: adding ? COLORS.accent : 'transparent',
+          color: adding ? '#fff' : COLORS.accent,
+          fontSize: 15,
+          fontWeight: 600,
+          lineHeight: 1,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+        }}
+      >
+        ＋
+      </button>
+      <button
         className="tl-btn tl-ghost"
         onClick={() => onRemove(task.id)}
         onPointerDown={stop}
@@ -453,6 +616,7 @@ export function TaskList({
   runningId,
   elapsedMap,
   sectionTotals,
+  addingSectionId,
   onName,
   onEstimate,
   onActual,
@@ -461,12 +625,15 @@ export function TaskList({
   onTimerToggle,
   onTimerReset,
   onToggleParallel,
+  onToggleAdd,
+  onAddToSection,
 }: {
   tasks: Task[]
   maxMin: number
   runningId: string | null
   elapsedMap: Record<string, number | null>
   sectionTotals: Record<string, SectionTotals>
+  addingSectionId: string | null
   onName: (id: string, v: string) => void
   onEstimate: (id: string, v: string) => void
   onActual: (id: string, v: string) => void
@@ -475,6 +642,8 @@ export function TaskList({
   onTimerToggle: (id: string) => void
   onTimerReset: (id: string) => void
   onToggleParallel: (id: string) => void
+  onToggleAdd: (id: string) => void
+  onAddToSection: (sectionId: string, name: string, est: number) => void
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [armedId, setArmedId] = useState<string | null>(null)
@@ -564,52 +733,73 @@ export function TaskList({
     <div ref={containerRef} onPointerMove={handleMove} onPointerUp={handleUp} onPointerCancel={handleUp}>
       {(() => {
         let taskNo = 0
-        return tasks.map((t, i) => {
+        let curSectionId: string | null = null
+        const rows: React.ReactNode[] = []
+        tasks.forEach((t, i) => {
           if (isSection(t)) {
-            return (
+            curSectionId = t.id
+            rows.push(
               <SectionRow
                 key={t.id}
                 task={t}
                 totals={sectionTotals[t.id]}
                 isDragging={dragId === t.id}
                 isArmed={armedId === t.id && !dragId}
+                adding={addingSectionId === t.id}
                 onRowDown={handleRowDown}
                 onName={onName}
                 onRemove={onRemove}
-              />
+                onToggleAdd={onToggleAdd}
+              />,
+            )
+          } else {
+            taskNo += 1
+            const prev = i > 0 ? tasks[i - 1] : null
+            const next = i < tasks.length - 1 ? tasks[i + 1] : null
+            // 並行リンクはセクションをまたげない
+            const canLink = prev != null && !isSection(prev)
+            const linked = canLink && !!t.parallel
+            const nextLinked = next != null && !isSection(next) && !!next.parallel
+            rows.push(
+              <TaskRow
+                key={t.id}
+                task={t}
+                index={taskNo - 1}
+                maxMin={maxMin}
+                isDragging={dragId === t.id}
+                isArmed={armedId === t.id && !dragId}
+                elapsedSec={elapsedMap[t.id] ?? null}
+                running={runningId === t.id}
+                canLink={canLink}
+                linked={linked}
+                inGroup={linked || nextLinked}
+                onRowDown={handleRowDown}
+                onName={onName}
+                onEstimate={onEstimate}
+                onActual={onActual}
+                onRemove={onRemove}
+                onTimerToggle={onTimerToggle}
+                onTimerReset={onTimerReset}
+                onToggleParallel={onToggleParallel}
+              />,
             )
           }
-          taskNo += 1
-          const prev = i > 0 ? tasks[i - 1] : null
-          const next = i < tasks.length - 1 ? tasks[i + 1] : null
-          // 並行リンクはセクションをまたげない
-          const canLink = prev != null && !isSection(prev)
-          const linked = canLink && !!t.parallel
-          const nextLinked = next != null && !isSection(next) && !!next.parallel
-          return (
-            <TaskRow
-              key={t.id}
-              task={t}
-              index={taskNo - 1}
-              maxMin={maxMin}
-              isDragging={dragId === t.id}
-              isArmed={armedId === t.id && !dragId}
-              elapsedSec={elapsedMap[t.id] ?? null}
-              running={runningId === t.id}
-              canLink={canLink}
-              linked={linked}
-              inGroup={linked || nextLinked}
-              onRowDown={handleRowDown}
-              onName={onName}
-              onEstimate={onEstimate}
-              onActual={onActual}
-              onRemove={onRemove}
-              onTimerToggle={onTimerToggle}
-              onTimerReset={onTimerReset}
-              onToggleParallel={onToggleParallel}
-            />
-          )
+          // セクション末尾（次がセクション or リスト終端）にインライン追加行を挿入
+          const isBoundary = i === tasks.length - 1 || isSection(tasks[i + 1])
+          if (isBoundary && addingSectionId != null && curSectionId === addingSectionId) {
+            const sid = addingSectionId
+            rows.push(
+              <NewTaskRow
+                key={`add-${sid}`}
+                nextIndex={taskNo + 1}
+                autoFocus
+                onAdd={(name, est) => onAddToSection(sid, name, est)}
+                onClose={() => onToggleAdd(sid)}
+              />,
+            )
+          }
         })
+        return rows
       })()}
     </div>
   )

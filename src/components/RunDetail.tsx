@@ -1,5 +1,5 @@
 // ラン詳細画面（仕様書 §3.2 / モック DetailScreen 準拠）
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { COLORS } from '../constants'
 import { barMax, computeMetrics, computeSectionTotals, fmt } from '../metrics'
 import type { RunMetrics } from '../metrics'
@@ -8,7 +8,7 @@ import { canShare, copyText, sharePrompt } from '../share'
 import { randomId } from '../storage'
 import type { Run, Task } from '../types'
 import { ConfirmDialog, DeltaPill, Overlay } from './common'
-import { TaskList } from './TaskRow'
+import { NewTaskRow, TaskList } from './TaskRow'
 
 function mdatetime(ts: number): string {
   const d = new Date(ts)
@@ -54,6 +54,8 @@ export function RunDetail({
   const [showHistory, setShowHistory] = useState(false)
   const [confirmBack, setConfirmBack] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // インライン追加行を開いているセクション id（null = 閉）
+  const [addingSectionId, setAddingSectionId] = useState<string | null>(null)
 
   const up = (fn: (r: Run) => Run) => setDraft((d) => fn(d))
   // 並行フラグの正規化: 先頭タスクと「セクション直後のタスク」はグループの起点なので解除
@@ -69,6 +71,18 @@ export function RunDetail({
     describe: (v: string) => up((r) => ({ ...r, description: v })),
     addTask: (name: string, est: number) =>
       up((r) => ({ ...r, tasks: [...r.tasks, { id: randomId(), name, estimateMin: est, actualMin: null }] })),
+    // セクション末尾（次のセクションの直前）に挿入
+    addTaskToSection: (sectionId: string, name: string, est: number) =>
+      up((r) => {
+        const newTask = { id: randomId(), name, estimateMin: est, actualMin: null }
+        const idx = r.tasks.findIndex((x) => x.id === sectionId)
+        if (idx < 0) return { ...r, tasks: [...r.tasks, newTask] }
+        let end = idx + 1
+        while (end < r.tasks.length && r.tasks[end].kind !== 'section') end += 1
+        const tasks = [...r.tasks]
+        tasks.splice(end, 0, newTask)
+        return { ...r, tasks }
+      }),
     addSection: () =>
       up((r) => {
         const n = r.tasks.filter((t) => t.kind === 'section').length + 1
@@ -366,11 +380,13 @@ export function RunDetail({
             runningId={run?.id ?? null}
             elapsedMap={elapsedMap}
             sectionTotals={sectionTotals}
+            addingSectionId={addingSectionId}
             onName={ops.setName}
             onEstimate={ops.setEstimate}
             onActual={ops.setActual}
             onRemove={(id) => {
               if (run?.id === id) setRun(null)
+              if (addingSectionId === id) setAddingSectionId(null)
               setAccSec((a) => {
                 const n = { ...a }
                 delete n[id]
@@ -382,6 +398,8 @@ export function RunDetail({
             onTimerToggle={toggleTimer}
             onTimerReset={resetTimer}
             onToggleParallel={ops.toggleParallel}
+            onToggleAdd={(id) => setAddingSectionId((cur) => (cur === id ? null : id))}
+            onAddToSection={ops.addTaskToSection}
           />
         )}
         <NewTaskRow nextIndex={m.totalCount + 1} onAdd={ops.addTask} />
@@ -750,99 +768,6 @@ export function RunDetail({
           onCancel={() => setConfirmDelete(false)}
         />
       )}
-    </div>
-  )
-}
-
-// --- 新規タスク行（常設）---
-function NewTaskRow({ nextIndex, onAdd }: { nextIndex: number; onAdd: (name: string, est: number) => void }) {
-  const [name, setName] = useState('')
-  const [est, setEst] = useState('')
-  const nameRef = useRef<HTMLInputElement>(null)
-
-  const ready = name.trim() !== '' && parseInt(est, 10) > 0
-  const submit = () => {
-    const n = name.trim()
-    const e = parseInt(est, 10)
-    if (!n || !e || e <= 0) return
-    onAdd(n, e)
-    setName('')
-    setEst('')
-    nameRef.current?.focus()
-  }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: `${COLORS.plan}06` }}>
-      <span className="tl-mono" style={{ fontSize: 10.5, color: COLORS.gray, flexShrink: 0 }}>
-        {String(nextIndex).padStart(2, '0')}
-      </span>
-      <input
-        ref={nameRef}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="新しいタスク…"
-        aria-label="新しいタスク名"
-        className="tl-input"
-        style={{
-          flex: 1,
-          minWidth: 0,
-          padding: '9px 10px',
-          border: `1px solid ${COLORS.line}`,
-          borderRadius: 8,
-          fontSize: 14,
-          background: '#fff',
-          color: COLORS.ink,
-        }}
-      />
-      <input
-        className="tl-input tl-mono"
-        type="number"
-        min="1"
-        inputMode="numeric"
-        value={est}
-        onChange={(e) => setEst(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="30"
-        aria-label="見積もり（分）"
-        style={{
-          width: 56,
-          padding: '9px 6px',
-          textAlign: 'right',
-          border: `1px solid ${COLORS.line}`,
-          borderRadius: 8,
-          fontSize: 14,
-          background: '#fff',
-          color: COLORS.plan,
-          flexShrink: 0,
-        }}
-      />
-      <span style={{ fontSize: 10.5, color: COLORS.inkSoft, flexShrink: 0 }}>分</span>
-      <button
-        className="tl-btn"
-        onClick={submit}
-        disabled={!ready}
-        aria-label="タスクを追加"
-        style={{
-          width: 36,
-          height: 36,
-          border: 'none',
-          borderRadius: 9,
-          flexShrink: 0,
-          background: ready ? COLORS.accent : COLORS.line,
-          color: '#fff',
-          fontSize: 19,
-          fontWeight: 600,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 0,
-          lineHeight: 1,
-        }}
-      >
-        ＋
-      </button>
     </div>
   )
 }
