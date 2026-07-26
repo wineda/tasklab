@@ -60,6 +60,8 @@ export function RunDetail({
   const [addingSectionId, setAddingSectionId] = useState<string | null>(null)
   // 画面スリープ抑止（計測中に画面が暗くならないように）
   const wakeLock = useWakeLock()
+  // 下部タブ: タスク編集 / ガント表示
+  const [tab, setTab] = useState<'tasks' | 'gantt'>('tasks')
 
   const up = (fn: (r: Run) => Run) => setDraft((d) => fn(d))
   // 並行フラグの正規化: 先頭タスクと「セクション直後のタスク」はグループの起点なので解除
@@ -201,7 +203,7 @@ export function RunDetail({
   const history = draft.history
 
   return (
-    <div className="tl-view">
+    <div className="tl-view" style={{ paddingBottom: 64 }}>
       {/* ナビ */}
       <div
         style={{
@@ -330,6 +332,8 @@ export function RunDetail({
         </div>
       </div>
 
+      {tab === 'tasks' && (
+        <>
       {/* 名前 + 説明 */}
       <div style={{ marginBottom: 16 }}>
         <input
@@ -467,6 +471,49 @@ export function RunDetail({
           § セクションを追加
         </button>
       </div>
+        </>
+      )}
+
+      {tab === 'gantt' && (
+        <>
+      {/* ガントタブ見出し（ラン名の読み取り表示） */}
+      <div
+        className="tl-disp"
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: COLORS.ink,
+          margin: '14px 0 12px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {draft.name || '無題のラン'}
+      </div>
+
+      {/* ガントチャート */}
+      {m.totalCount > 0 ? (
+        <GanttChart tasks={draft.tasks} collapsible={false} />
+      ) : (
+        <div
+          style={{
+            padding: '40px 20px',
+            textAlign: 'center',
+            color: COLORS.gray,
+            border: `1px dashed ${COLORS.line}`,
+            borderRadius: 12,
+            background: COLORS.surface,
+            fontSize: 13,
+            lineHeight: 1.7,
+            marginBottom: 14,
+          }}
+        >
+          タスクを追加すると
+          <br />
+          ガントチャートが表示されます。
+        </div>
+      )}
 
       {/* 集計 */}
       {m.totalCount > 0 && (
@@ -569,10 +616,11 @@ export function RunDetail({
 
       {/* 所要時間（並行を考慮）— 並行グループがあるときのみ */}
       {m.hasParallel && <DurationCard metrics={m} allMeasured={m.measuredCount === m.totalCount} />}
+        </>
+      )}
 
-      {/* ガントチャート */}
-      {m.totalCount > 0 && <GanttChart tasks={draft.tasks} />}
-
+      {tab === 'tasks' && (
+        <>
       {/* AI 考察ハンドオフ */}
       {m.totalCount > 0 && (
         <div
@@ -712,6 +760,49 @@ export function RunDetail({
           )}
         </div>
       )}
+        </>
+      )}
+
+      {/* 下部タブバー: タスク編集 / ガント表示 */}
+      <nav
+        role="tablist"
+        aria-label="表示切り替え"
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '100%',
+          maxWidth: 480,
+          display: 'flex',
+          background: COLORS.paper,
+          borderTop: `1px solid ${COLORS.line}`,
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          zIndex: 10,
+        }}
+      >
+        <TabButton
+          label="タスク編集"
+          selected={tab === 'tasks'}
+          onClick={() => setTab('tasks')}
+          icon={
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 6h13M8 12h13M8 18h13" />
+              <path d="M3 6h.01M3 12h.01M3 18h.01" />
+            </svg>
+          }
+        />
+        <TabButton
+          label="ガント表示"
+          selected={tab === 'gantt'}
+          onClick={() => setTab('gantt')}
+          icon={
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 5h9M7 12h13M4 19h7" />
+            </svg>
+          }
+        />
+      </nav>
 
       {/* 保存モーダル */}
       {saveOpen && (
@@ -816,6 +907,48 @@ export function RunDetail({
         />
       )}
     </div>
+  )
+}
+
+// --- 下部タブのボタン ---
+function TabButton({
+  label,
+  selected,
+  onClick,
+  icon,
+}: {
+  label: string
+  selected: boolean
+  onClick: () => void
+  icon: React.ReactNode
+}) {
+  return (
+    <button
+      className="tl-btn"
+      role="tab"
+      aria-selected={selected}
+      onClick={onClick}
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 3,
+        padding: '8px 0 9px',
+        border: 'none',
+        borderTop: `2px solid ${selected ? COLORS.accent : 'transparent'}`,
+        marginTop: -1,
+        background: 'transparent',
+        color: selected ? COLORS.accent : COLORS.gray,
+        fontSize: 10.5,
+        fontWeight: selected ? 700 : 500,
+        cursor: 'pointer',
+        minHeight: 48,
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 
