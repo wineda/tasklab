@@ -106,6 +106,92 @@ export function computeSchedule(tasks: Task[]): Schedule {
   return { rows, planEnd: planCursor, actualEnd: actualCursor }
 }
 
+// セクション単位のスケジュール（ざっくり表示用）。
+// 各セクションのタイムライン上の開始〜終了スパン（並行を考慮した所要）を計画/実測それぞれで算出。
+// 最初のセクションより前にタスクがある場合は「（未分類）」ブロックとして先頭に含める。
+export interface SectionScheduleRow {
+  id: string
+  name: string
+  planStart: number
+  planDur: number
+  actualStart: number
+  actualDur: number // 計測済みタスクが無ければ 0
+  measuredCount: number
+  taskCount: number
+}
+
+export function computeSectionSchedule(tasks: Task[]): {
+  rows: SectionScheduleRow[]
+  planEnd: number
+  actualEnd: number
+} {
+  const rows: SectionScheduleRow[] = []
+  let planCursor = 0
+  let actualCursor = 0
+  let group: { planMax: number; actualMax: number } | null = null
+  let cur: SectionScheduleRow | null = null
+
+  const flush = () => {
+    if (group) {
+      planCursor += group.planMax
+      actualCursor += group.actualMax
+      group = null
+    }
+  }
+  const close = () => {
+    if (cur) {
+      cur.planDur = planCursor - cur.planStart
+      cur.actualDur = actualCursor - cur.actualStart
+      rows.push(cur)
+      cur = null
+    }
+  }
+
+  for (const t of tasks) {
+    if (isSection(t)) {
+      flush()
+      close()
+      cur = {
+        id: t.id,
+        name: t.name,
+        planStart: planCursor,
+        planDur: 0,
+        actualStart: actualCursor,
+        actualDur: 0,
+        measuredCount: 0,
+        taskCount: 0,
+      }
+      continue
+    }
+    if (!cur) {
+      cur = {
+        id: '__head',
+        name: '（未分類）',
+        planStart: 0,
+        planDur: 0,
+        actualStart: 0,
+        actualDur: 0,
+        measuredCount: 0,
+        taskCount: 0,
+      }
+    }
+    if (!group || !t.parallel) {
+      flush()
+      group = { planMax: 0, actualMax: 0 }
+    }
+    group.planMax = Math.max(group.planMax, t.estimateMin)
+    if (t.actualMin != null) {
+      group.actualMax = Math.max(group.actualMax, t.actualMin)
+      cur.measuredCount += 1
+    }
+    cur.taskCount += 1
+  }
+  flush()
+  close()
+
+  return { rows, planEnd: planCursor, actualEnd: actualCursor }
+}
+
 // セクション毎の合計（セクション行の id → 集計）。
 // セクション行より前のタスク（未分類）は含まれない。
 export interface SectionTotals {
