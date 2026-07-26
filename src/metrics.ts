@@ -14,12 +14,26 @@ export interface RunMetrics {
   deltaPct: number | null // 計画比 %（Δ 行）
   absPct: number | null // 計画比 %（ばらつき行）
   hasCancellation: boolean // Δ=0 だが Σ|Δ|>0（相殺）
+  // 並行グループ（所要時間 / クリティカルパス）
+  hasParallel: boolean // 並行グループ（2 件以上のグループ）が存在するか
+  planDuration: number // 計画の所要時間 = Σ_group max(estimate)
+  actualDuration: number // 実測の所要時間 = Σ_group max(計測済み actual)（未計測グループは 0）
 }
 
 // タスク単位の Δ（実測入力済みのみ）。未計測は null。
 export function taskDelta(t: Task): number | null {
   if (t.actualMin === null) return null
   return t.actualMin - t.estimateMin
+}
+
+// 連続する「並行」タスクを 1 グループにまとめる（先頭タスクの parallel は無視）。
+export function computeGroups(tasks: Task[]): Task[][] {
+  const groups: Task[][] = []
+  tasks.forEach((t, i) => {
+    if (i === 0 || !t.parallel) groups.push([t])
+    else groups[groups.length - 1].push(t)
+  })
+  return groups
 }
 
 export function computeMetrics(run: Run): RunMetrics {
@@ -48,6 +62,17 @@ export function computeMetrics(run: Run): RunMetrics {
   const absPct = planTotalMeasured > 0 ? (absSum / planTotalMeasured) * 100 : null
   const hasCancellation = delta === 0 && absSum > 0
 
+  // 並行グループを考慮した所要時間（クリティカルパス）
+  const groups = computeGroups(tasks)
+  const hasParallel = groups.some((g) => g.length > 1)
+  let planDuration = 0
+  let actualDuration = 0
+  for (const g of groups) {
+    planDuration += Math.max(0, ...g.map((t) => t.estimateMin))
+    const measured = g.filter((t) => t.actualMin !== null) as Array<Task & { actualMin: number }>
+    if (measured.length) actualDuration += Math.max(...measured.map((t) => t.actualMin))
+  }
+
   return {
     measuredCount,
     totalCount: tasks.length,
@@ -60,6 +85,9 @@ export function computeMetrics(run: Run): RunMetrics {
     deltaPct,
     absPct,
     hasCancellation,
+    hasParallel,
+    planDuration,
+    actualDuration,
   }
 }
 
