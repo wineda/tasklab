@@ -36,6 +36,9 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
   const effMode: ViewMode = hasSections ? mode : 'task'
 
   const open = !collapsible || !collapsed
+  const hasParallel = tasks.some(
+    (t, i) => i > 0 && !!t.parallel && !isSection(t) && !isSection(tasks[i - 1]),
+  )
   const taskSchedule = useMemo(() => computeSchedule(tasks), [tasks])
   const sectionSchedule = useMemo(() => computeSectionSchedule(tasks), [tasks])
   const { planEnd, actualEnd } = taskSchedule
@@ -88,6 +91,7 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
           <span className="tl-mono" style={{ fontSize: 10, color: COLORS.gray }}>
             計画<span style={{ color: COLORS.plan }}> ■</span>　実測
             <span style={{ color: COLORS.actual }}> ■</span>
+            {hasParallel && <span style={{ color: COLORS.accent }}>　⇄並行</span>}
           </span>
           {collapsible && (
             <span style={{ color: COLORS.gray, fontSize: 11 }}>{open ? '▲' : '▼'}</span>
@@ -177,10 +181,16 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
                       ticks={ticks}
                     />
                   ))
-                : taskSchedule.rows.map((r) =>
-                    r.kind === 'section' ? (
-                      <SectionLabelRow key={r.task.id} name={r.task.name} />
-                    ) : (
+                : taskSchedule.rows.map((r, i, arr) => {
+                    if (r.kind === 'section') {
+                      return <SectionLabelRow key={r.task.id} name={r.task.name} />
+                    }
+                    // 2 件以上の並行グループに属するか（並行チェーンはセクションをまたがない）
+                    const prev = i > 0 ? arr[i - 1] : null
+                    const next = i < arr.length - 1 ? arr[i + 1] : null
+                    const linked = !!r.task.parallel && prev?.kind === 'task'
+                    const nextLinked = next?.kind === 'task' && !!next.task.parallel
+                    return (
                       <BarRow
                         key={r.task.id}
                         label={r.task.name || '（無題）'}
@@ -188,11 +198,12 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
                         planDur={r.planDur}
                         actualStart={r.actualStart}
                         actualDur={r.actualDur}
+                        parallel={linked || nextLinked}
                         total={total}
                         ticks={ticks}
                       />
-                    ),
-                  )}
+                    )
+                  })}
             </div>
           </div>
 
@@ -291,6 +302,7 @@ function BarRow({
   actualStart,
   actualDur,
   partial,
+  parallel,
   total,
   ticks,
 }: {
@@ -302,6 +314,7 @@ function BarRow({
   actualStart: number | null
   actualDur: number | null
   partial?: boolean // 実測が一部のタスクのみ（セクションモード用の注記）
+  parallel?: boolean // 2 件以上の並行グループの一員（詳細モード用）
   total: number
   ticks: number[]
 }) {
@@ -312,7 +325,7 @@ function BarRow({
     delta == null ? COLORS.gray : delta > 0 ? COLORS.rose : delta < 0 ? COLORS.green : COLORS.inkSoft
 
   return (
-    <div style={{ padding: '5px 0 7px' }}>
+    <div style={{ padding: '5px 0 7px' }} data-parallel={parallel ? '1' : undefined}>
       {/* 名前 + 数値（計画 → 実測）: ズーム中も sticky で左端に固定 */}
       <div
         style={{
@@ -326,6 +339,25 @@ function BarRow({
           maxWidth: STICKY_MAX_W,
         }}
       >
+        {parallel && (
+          <span
+            aria-label="並行タスク"
+            title="上下のタスクと並行"
+            style={{
+              flexShrink: 0,
+              fontSize: 9,
+              fontWeight: 700,
+              lineHeight: 1,
+              padding: '2px 5px',
+              borderRadius: 999,
+              background: COLORS.accent,
+              color: '#fff',
+              alignSelf: 'center',
+            }}
+          >
+            ⇄
+          </span>
+        )}
         <span
           className={labelAccent ? 'tl-disp' : undefined}
           style={{
@@ -354,12 +386,12 @@ function BarRow({
         </span>
       </div>
 
-      {/* トラック（背景 + 行内グリッド線 + バー） */}
+      {/* トラック（背景 + 行内グリッド線 + バー）。並行グループは藍のティント */}
       <div
         style={{
           position: 'relative',
           height: 16,
-          background: '#EFF3F1',
+          background: parallel ? '#E4EDF6' : '#EFF3F1',
           borderRadius: 4,
           overflow: 'hidden',
         }}
@@ -378,6 +410,21 @@ function BarRow({
             }}
           />
         ))}
+        {/* 並行グループの共有開始位置（縦のアンカー線）。同じ x に並ぶことでグループが繋がって見える */}
+        {parallel && (
+          <span
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: `${pct(planStart)}%`,
+              width: 2,
+              background: COLORS.accent,
+              opacity: 0.55,
+            }}
+          />
+        )}
         {planDur > 0 && (
           <span
             data-gantt-plan={`${planStart}:${planDur}`}
