@@ -48,6 +48,64 @@ export function computeGroups(tasks: Task[]): Task[][] {
   return groups
 }
 
+// ガントチャート用スケジュール算出。
+// タスクは記載順に直列、並行グループは同時開始。グループの所要は最長メンバー。
+// 計画タイムラインと実測タイムラインを別々に進める（実測は計測済みのみ寄与）。
+export interface GanttRow {
+  kind: 'section' | 'task'
+  task: Task
+  planStart: number
+  planDur: number
+  actualStart: number | null // 未計測タスクは null（バーなし）
+  actualDur: number | null
+}
+
+export interface Schedule {
+  rows: GanttRow[]
+  planEnd: number
+  actualEnd: number
+}
+
+export function computeSchedule(tasks: Task[]): Schedule {
+  const rows: GanttRow[] = []
+  let planCursor = 0
+  let actualCursor = 0
+  let group: { planMax: number; actualMax: number } | null = null
+
+  const flush = () => {
+    if (group) {
+      planCursor += group.planMax
+      actualCursor += group.actualMax
+      group = null
+    }
+  }
+
+  for (const t of tasks) {
+    if (isSection(t)) {
+      flush()
+      rows.push({ kind: 'section', task: t, planStart: planCursor, planDur: 0, actualStart: null, actualDur: null })
+      continue
+    }
+    if (!group || !t.parallel) {
+      flush()
+      group = { planMax: 0, actualMax: 0 }
+    }
+    rows.push({
+      kind: 'task',
+      task: t,
+      planStart: planCursor,
+      planDur: t.estimateMin,
+      actualStart: t.actualMin != null ? actualCursor : null,
+      actualDur: t.actualMin,
+    })
+    group.planMax = Math.max(group.planMax, t.estimateMin)
+    if (t.actualMin != null) group.actualMax = Math.max(group.actualMax, t.actualMin)
+  }
+  flush()
+
+  return { rows, planEnd: planCursor, actualEnd: actualCursor }
+}
+
 // セクション毎の合計（セクション行の id → 集計）。
 // セクション行より前のタスク（未分類）は含まれない。
 export interface SectionTotals {

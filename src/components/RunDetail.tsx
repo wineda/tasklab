@@ -9,6 +9,7 @@ import { randomId } from '../storage'
 import { useWakeLock } from '../useWakeLock'
 import type { Run, Task } from '../types'
 import { ConfirmDialog, DeltaPill, Overlay } from './common'
+import { GanttChart } from './GanttChart'
 import { NewTaskRow, TaskList } from './TaskRow'
 
 function mdatetime(ts: number): string {
@@ -568,6 +569,9 @@ export function RunDetail({
 
       {/* 所要時間（並行を考慮）— 並行グループがあるときのみ */}
       {m.hasParallel && <DurationCard metrics={m} allMeasured={m.measuredCount === m.totalCount} />}
+
+      {/* ガントチャート */}
+      {m.totalCount > 0 && <GanttChart tasks={draft.tasks} />}
 
       {/* AI 考察ハンドオフ */}
       {m.totalCount > 0 && (
