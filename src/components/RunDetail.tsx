@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLORS } from '../constants'
 import { barMax, computeMetrics, fmt } from '../metrics'
+import type { RunMetrics } from '../metrics'
 import { buildPrompt } from '../prompt'
 import { canShare, copyText, sharePrompt } from '../share'
 import { randomId } from '../storage'
@@ -68,7 +69,11 @@ export function RunDetail({
     setActual: (id: string, v: string) =>
       up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, actualMin: parseActual(v) } : x)) })),
     removeTask: (id: string) => up((r) => ({ ...r, tasks: r.tasks.filter((x) => x.id !== id) })),
-    reorder: (next: Task[]) => up((r) => ({ ...r, tasks: next })),
+    reorder: (next: Task[]) =>
+      // 先頭に来たタスクの「並行」フラグは無効化（先頭は必ずグループの起点）
+      up((r) => ({ ...r, tasks: next.map((t, i) => (i === 0 && t.parallel ? { ...t, parallel: false } : t)) })),
+    toggleParallel: (id: string) =>
+      up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, parallel: !x.parallel } : x)) })),
   }
 
   // --- ストップウォッチ計測（実測の自動記録, 仕様書 §9）---
@@ -356,6 +361,7 @@ export function RunDetail({
             onReorder={ops.reorder}
             onTimerToggle={toggleTimer}
             onTimerReset={resetTimer}
+            onToggleParallel={ops.toggleParallel}
           />
         )}
         <NewTaskRow nextIndex={tasks.length + 1} onAdd={ops.addTask} />
@@ -375,9 +381,11 @@ export function RunDetail({
             marginBottom: 14,
           }}
         >
-          <Cell label="計画 合計" value={fmt(m.planTotal)} color={COLORS.plan} />
+          <Cell label={m.hasParallel ? '計画 工数' : '計画 合計'} value={fmt(m.planTotal)} color={COLORS.plan} />
           <Cell
-            label={`実測 合計${m.measuredCount < tasks.length ? ` (${m.measuredCount}/${tasks.length})` : ''}`}
+            label={`${m.hasParallel ? '実測 工数' : '実測 合計'}${
+              m.measuredCount < tasks.length ? ` (${m.measuredCount}/${tasks.length})` : ''
+            }`}
             value={m.measuredCount ? fmt(m.actualTotal) : '—'}
             color={COLORS.actual}
           />
@@ -457,6 +465,9 @@ export function RunDetail({
           )}
         </div>
       )}
+
+      {/* 所要時間（並行を考慮）— 並行グループがあるときのみ */}
+      {m.hasParallel && <DurationCard metrics={m} allMeasured={m.measuredCount === tasks.length} />}
 
       {/* AI 考察ハンドオフ */}
       {tasks.length > 0 && (
@@ -793,6 +804,73 @@ function NewTaskRow({ nextIndex, onAdd }: { nextIndex: number; onAdd: (name: str
       >
         ＋
       </button>
+    </div>
+  )
+}
+
+// --- 所要時間カード（並行を考慮）---
+function DurationCard({ metrics, allMeasured }: { metrics: RunMetrics; allMeasured: boolean }) {
+  const { planDuration, actualDuration, planTotal, measuredCount, totalCount } = metrics
+  const saved = Math.max(0, planTotal - planDuration)
+  const durDelta = allMeasured ? actualDuration - planDuration : null
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ margin: '0 2px 6px', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span
+          className="tl-disp"
+          style={{ fontSize: 12.5, fontWeight: 600, letterSpacing: '0.04em', color: COLORS.accent }}
+        >
+          所要時間（並行を考慮）
+        </span>
+        <span style={{ fontSize: 11, color: COLORS.gray }}>
+          各並行グループは最長タスクぶんだけ掛かります
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 1,
+          background: COLORS.line,
+          border: `1px solid ${COLORS.line}`,
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
+      >
+        <Cell label="計画 所要" value={fmt(planDuration)} color={COLORS.plan} />
+        <Cell
+          label={`実測 所要${measuredCount < totalCount ? ` (${measuredCount}/${totalCount})` : ''}`}
+          value={measuredCount ? fmt(actualDuration) : '—'}
+          color={COLORS.actual}
+        />
+        <div
+          style={{
+            gridColumn: '1 / -1',
+            background: COLORS.surface,
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+          }}
+        >
+          <div>
+            <div
+              className="tl-mono"
+              style={{ fontSize: 10, color: COLORS.inkSoft, letterSpacing: '0.06em', marginBottom: 3 }}
+            >
+              所要 Δ（実測 − 計画）
+            </div>
+            <div className="tl-mono" style={{ fontSize: 11, color: COLORS.inkSoft }}>
+              総工数 {fmt(planTotal)} → 所要 {fmt(planDuration)}
+              {saved > 0 ? `（並行で −${fmt(saved)}）` : ''}
+              {!allMeasured && measuredCount > 0 ? ' ・ 実測 Δ は全計測後' : ''}
+            </div>
+          </div>
+          <DeltaPill delta={durDelta} big />
+        </div>
+      </div>
     </div>
   )
 }

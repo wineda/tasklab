@@ -3,21 +3,34 @@
 import { DEFAULT_PROMPT } from './constants'
 import type { Run } from './types'
 
+export interface RunTaskJson {
+  name: string
+  estimate_min: number
+  actual_min: number | null
+  parallel_with_prev?: boolean // 直前のタスクと並行（並行グループがある場合のみ付与）
+}
+
 export interface RunDataJson {
   run_name: string
   description: string
-  tasks: { name: string; estimate_min: number; actual_min: number | null }[]
+  tasks: RunTaskJson[]
 }
 
 export function buildRunData(run: Run): RunDataJson {
+  // 並行グループが使われている場合のみ parallel_with_prev を含める
+  const hasParallel = run.tasks.some((t, i) => i > 0 && t.parallel)
   return {
     run_name: run.name,
     description: run.description,
-    tasks: run.tasks.map((t) => ({
-      name: t.name,
-      estimate_min: t.estimateMin,
-      actual_min: t.actualMin,
-    })),
+    tasks: run.tasks.map((t, i) => {
+      const task: RunTaskJson = {
+        name: t.name,
+        estimate_min: t.estimateMin,
+        actual_min: t.actualMin,
+      }
+      if (hasParallel) task.parallel_with_prev = i > 0 && !!t.parallel
+      return task
+    }),
   }
 }
 

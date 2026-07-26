@@ -47,7 +47,8 @@ function normalizeTask(v: unknown): Task | null {
     actualMin = Math.max(0, Math.round(v.actualMin as number))
   }
   const id = typeof v.id === 'string' && v.id ? v.id : randomId()
-  return { id, name, estimateMin, actualMin }
+  const parallel = v.parallel === true
+  return { id, name, estimateMin, actualMin, parallel }
 }
 
 function normalizeHistory(v: unknown): HistoryEntry | null {

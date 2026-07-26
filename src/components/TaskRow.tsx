@@ -28,6 +28,9 @@ function TaskRow({
   isArmed,
   elapsedSec,
   running,
+  canLink,
+  linked,
+  inGroup,
   onRowDown,
   onName,
   onEstimate,
@@ -35,6 +38,7 @@ function TaskRow({
   onRemove,
   onTimerToggle,
   onTimerReset,
+  onToggleParallel,
 }: {
   task: Task
   index: number
@@ -43,6 +47,9 @@ function TaskRow({
   isArmed: boolean
   elapsedSec: number | null // null = 未計測（タイマー未使用）
   running: boolean
+  canLink: boolean // 直前タスクと並行にできる（先頭以外）
+  linked: boolean // 直前タスクと並行（グループの2件目以降）
+  inGroup: boolean // 2 件以上の並行グループに属する（左バー表示用）
   onRowDown: (e: React.PointerEvent, id: string) => void
   onName: (id: string, v: string) => void
   onEstimate: (id: string, v: string) => void
@@ -50,6 +57,7 @@ function TaskRow({
   onRemove: (id: string) => void
   onTimerToggle: (id: string) => void
   onTimerReset: (id: string) => void
+  onToggleParallel: (id: string) => void
 }) {
   const est = task.estimateMin
   const act = task.actualMin
@@ -86,6 +94,13 @@ function TaskRow({
         cursor: isDragging ? 'grabbing' : 'default',
       }}
     >
+      {/* 並行グループの左バー */}
+      {inGroup && (
+        <div
+          aria-hidden
+          style={{ width: 3, alignSelf: 'stretch', background: COLORS.accent, flexShrink: 0 }}
+        />
+      )}
       <div style={{ flex: 1, minWidth: 0, padding: '9px 12px' }}>
         {/* 1 行目: 連番 / 名前 / Δ / 削除 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
@@ -111,6 +126,30 @@ function TaskRow({
               userSelect: 'text',
             }}
           />
+          {canLink && (
+            <button
+              className="tl-btn"
+              onClick={() => onToggleParallel(task.id)}
+              onPointerDown={stop}
+              aria-label={linked ? '上のタスクとの並行を解除' : '上のタスクと並行にする'}
+              aria-pressed={linked}
+              title={linked ? '上のタスクと並行（タップで解除）' : '上のタスクと並行にする'}
+              style={{
+                flexShrink: 0,
+                fontSize: 10.5,
+                fontWeight: 700,
+                lineHeight: 1,
+                padding: '3px 8px',
+                borderRadius: 999,
+                cursor: 'pointer',
+                border: `1px solid ${linked ? COLORS.accent : COLORS.line}`,
+                background: linked ? COLORS.accent : '#fff',
+                color: linked ? '#fff' : COLORS.gray,
+              }}
+            >
+              ⇄ 並行
+            </button>
+          )}
           <span className="tl-mono" style={{ fontSize: 12, fontWeight: 700, color: dColor }}>
             {delta == null ? '' : `Δ ${signStr(delta)}`}
           </span>
@@ -305,6 +344,7 @@ export function TaskList({
   onReorder,
   onTimerToggle,
   onTimerReset,
+  onToggleParallel,
 }: {
   tasks: Task[]
   maxMin: number
@@ -317,6 +357,7 @@ export function TaskList({
   onReorder: (next: Task[]) => void
   onTimerToggle: (id: string) => void
   onTimerReset: (id: string) => void
+  onToggleParallel: (id: string) => void
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [armedId, setArmedId] = useState<string | null>(null)
@@ -404,25 +445,33 @@ export function TaskList({
 
   return (
     <div ref={containerRef} onPointerMove={handleMove} onPointerUp={handleUp} onPointerCancel={handleUp}>
-      {tasks.map((t, i) => (
-        <TaskRow
-          key={t.id}
-          task={t}
-          index={i}
-          maxMin={maxMin}
-          isDragging={dragId === t.id}
-          isArmed={armedId === t.id && !dragId}
-          elapsedSec={elapsedMap[t.id] ?? null}
-          running={runningId === t.id}
-          onRowDown={handleRowDown}
-          onName={onName}
-          onEstimate={onEstimate}
-          onActual={onActual}
-          onRemove={onRemove}
-          onTimerToggle={onTimerToggle}
-          onTimerReset={onTimerReset}
-        />
-      ))}
+      {tasks.map((t, i) => {
+        const linked = i > 0 && !!t.parallel
+        const nextLinked = i < tasks.length - 1 && !!tasks[i + 1].parallel
+        return (
+          <TaskRow
+            key={t.id}
+            task={t}
+            index={i}
+            maxMin={maxMin}
+            isDragging={dragId === t.id}
+            isArmed={armedId === t.id && !dragId}
+            elapsedSec={elapsedMap[t.id] ?? null}
+            running={runningId === t.id}
+            canLink={i > 0}
+            linked={linked}
+            inGroup={linked || nextLinked}
+            onRowDown={handleRowDown}
+            onName={onName}
+            onEstimate={onEstimate}
+            onActual={onActual}
+            onRemove={onRemove}
+            onTimerToggle={onTimerToggle}
+            onTimerReset={onTimerReset}
+            onToggleParallel={onToggleParallel}
+          />
+        )
+      })}
     </div>
   )
 }
