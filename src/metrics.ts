@@ -20,20 +20,63 @@ export interface RunMetrics {
   actualDuration: number // 実測の所要時間 = Σ_group max(計測済み actual)（未計測グループは 0）
 }
 
+// セクション見出し行かどうか
+export function isSection(t: Task): boolean {
+  return t.kind === 'section'
+}
+
 // タスク単位の Δ（実測入力済みのみ）。未計測は null。
 export function taskDelta(t: Task): number | null {
   if (t.actualMin === null) return null
   return t.actualMin - t.estimateMin
 }
 
-// 連続する「並行」タスクを 1 グループにまとめる（先頭タスクの parallel は無視）。
+// 連続する「並行」タスクを 1 グループにまとめる。
+// セクション行はグループの境界（並行チェーンはセクションをまたがない）。
 export function computeGroups(tasks: Task[]): Task[][] {
   const groups: Task[][] = []
-  tasks.forEach((t, i) => {
-    if (i === 0 || !t.parallel) groups.push([t])
+  let prevWasTask = false
+  for (const t of tasks) {
+    if (isSection(t)) {
+      prevWasTask = false
+      continue
+    }
+    if (!prevWasTask || !t.parallel) groups.push([t])
     else groups[groups.length - 1].push(t)
-  })
+    prevWasTask = true
+  }
   return groups
+}
+
+// セクション毎の合計（セクション行の id → 集計）。
+// セクション行より前のタスク（未分類）は含まれない。
+export interface SectionTotals {
+  count: number // タスク数
+  measured: number // 計測済みタスク数
+  plan: number // 計画合計
+  actual: number // 実測合計（計測済みのみ）
+  delta: number // Σ(actual − estimate)（計測済みのみ）
+}
+
+export function computeSectionTotals(tasks: Task[]): Record<string, SectionTotals> {
+  const map: Record<string, SectionTotals> = {}
+  let cur: SectionTotals | null = null
+  for (const t of tasks) {
+    if (isSection(t)) {
+      cur = { count: 0, measured: 0, plan: 0, actual: 0, delta: 0 }
+      map[t.id] = cur
+      continue
+    }
+    if (!cur) continue
+    cur.count += 1
+    cur.plan += t.estimateMin
+    if (t.actualMin !== null) {
+      cur.measured += 1
+      cur.actual += t.actualMin
+      cur.delta += t.actualMin - t.estimateMin
+    }
+  }
+  return map
 }
 
 export function computeMetrics(run: Run): RunMetrics {
@@ -45,7 +88,10 @@ export function computeMetrics(run: Run): RunMetrics {
   let delta = 0
   let absSum = 0
 
+  let realCount = 0
   for (const t of tasks) {
+    if (isSection(t)) continue
+    realCount += 1
     planTotal += t.estimateMin
     if (t.actualMin !== null) {
       measuredCount += 1
@@ -75,7 +121,7 @@ export function computeMetrics(run: Run): RunMetrics {
 
   return {
     measuredCount,
-    totalCount: tasks.length,
+    totalCount: realCount,
     planTotal,
     planTotalMeasured,
     actualTotal,

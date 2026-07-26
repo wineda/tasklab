@@ -48,6 +48,9 @@ function normalizeTask(v: unknown): Task | null {
   }
   const id = typeof v.id === 'string' && v.id ? v.id : randomId()
   const parallel = v.parallel === true
+  const kind = v.kind === 'section' ? ('section' as const) : undefined
+  // セクション行は数値・並行フラグを持たない
+  if (kind === 'section') return { id, name, estimateMin: 0, actualMin: null, kind }
   return { id, name, estimateMin, actualMin, parallel }
 }
 

@@ -1,7 +1,7 @@
 // ラン詳細画面（仕様書 §3.2 / モック DetailScreen 準拠）
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLORS } from '../constants'
-import { barMax, computeMetrics, fmt } from '../metrics'
+import { barMax, computeMetrics, computeSectionTotals, fmt } from '../metrics'
 import type { RunMetrics } from '../metrics'
 import { buildPrompt } from '../prompt'
 import { canShare, copyText, sharePrompt } from '../share'
@@ -56,22 +56,39 @@ export function RunDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const up = (fn: (r: Run) => Run) => setDraft((d) => fn(d))
+  // 並行フラグの正規化: 先頭タスクと「セクション直後のタスク」はグループの起点なので解除
+  const normalizeTasks = (tasks: Task[]): Task[] =>
+    tasks.map((t, i) => {
+      const prev = i > 0 ? tasks[i - 1] : null
+      const invalid = t.parallel && (i === 0 || prev?.kind === 'section' || t.kind === 'section')
+      return invalid ? { ...t, parallel: false } : t
+    })
   const ops = {
     rename: (v: string) => up((r) => ({ ...r, name: v })),
     renameBlur: () => up((r) => (r.name.trim() ? r : { ...r, name: '無題のラン' })),
     describe: (v: string) => up((r) => ({ ...r, description: v })),
     addTask: (name: string, est: number) =>
       up((r) => ({ ...r, tasks: [...r.tasks, { id: randomId(), name, estimateMin: est, actualMin: null }] })),
+    addSection: () =>
+      up((r) => {
+        const n = r.tasks.filter((t) => t.kind === 'section').length + 1
+        return {
+          ...r,
+          tasks: [
+            ...r.tasks,
+            { id: randomId(), name: `セクション ${n}`, estimateMin: 0, actualMin: null, kind: 'section' as const },
+          ],
+        }
+      }),
     setName: (id: string, v: string) =>
       up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, name: v } : x)) })),
     setEstimate: (id: string, v: string) =>
       up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, estimateMin: parseEstimate(v) } : x)) })),
     setActual: (id: string, v: string) =>
       up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, actualMin: parseActual(v) } : x)) })),
-    removeTask: (id: string) => up((r) => ({ ...r, tasks: r.tasks.filter((x) => x.id !== id) })),
-    reorder: (next: Task[]) =>
-      // 先頭に来たタスクの「並行」フラグは無効化（先頭は必ずグループの起点）
-      up((r) => ({ ...r, tasks: next.map((t, i) => (i === 0 && t.parallel ? { ...t, parallel: false } : t)) })),
+    removeTask: (id: string) =>
+      up((r) => ({ ...r, tasks: normalizeTasks(r.tasks.filter((x) => x.id !== id)) })),
+    reorder: (next: Task[]) => up((r) => ({ ...r, tasks: normalizeTasks(next) })),
     toggleParallel: (id: string) =>
       up((r) => ({ ...r, tasks: r.tasks.map((x) => (x.id === id ? { ...x, parallel: !x.parallel } : x)) })),
   }
@@ -144,6 +161,8 @@ export function RunDetail({
     // nowMs / run / accSec の変化で更新
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.tasks, run, accSec, nowMs])
+
+  const sectionTotals = useMemo(() => computeSectionTotals(draft.tasks), [draft.tasks])
 
   const dirty = stripHist(draft) !== stripHist(saved)
 
@@ -320,7 +339,7 @@ export function RunDetail({
             className="tl-disp"
             style={{ fontSize: 12.5, fontWeight: 600, letterSpacing: '0.04em', color: COLORS.inkSoft }}
           >
-            タスク {tasks.length ? `（${tasks.length}）` : ''}
+            タスク {m.totalCount ? `（${m.totalCount}）` : ''}
             {tasks.length > 1 && (
               <span
                 style={{
@@ -346,6 +365,7 @@ export function RunDetail({
             maxMin={maxMin}
             runningId={run?.id ?? null}
             elapsedMap={elapsedMap}
+            sectionTotals={sectionTotals}
             onName={ops.setName}
             onEstimate={ops.setEstimate}
             onActual={ops.setActual}
@@ -364,11 +384,30 @@ export function RunDetail({
             onToggleParallel={ops.toggleParallel}
           />
         )}
-        <NewTaskRow nextIndex={tasks.length + 1} onAdd={ops.addTask} />
+        <NewTaskRow nextIndex={m.totalCount + 1} onAdd={ops.addTask} />
+        {/* セクション追加（リスト末尾に区切りを挿入） */}
+        <button
+          className="tl-btn tl-ghost"
+          onClick={ops.addSection}
+          style={{
+            width: '100%',
+            padding: '9px 12px',
+            border: 'none',
+            borderTop: `1px dashed ${COLORS.line}`,
+            background: 'transparent',
+            color: COLORS.inkSoft,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          § セクションを追加
+        </button>
       </div>
 
       {/* 集計 */}
-      {tasks.length > 0 && (
+      {m.totalCount > 0 && (
         <div
           style={{
             display: 'grid',
@@ -384,7 +423,7 @@ export function RunDetail({
           <Cell label={m.hasParallel ? '計画 工数' : '計画 合計'} value={fmt(m.planTotal)} color={COLORS.plan} />
           <Cell
             label={`${m.hasParallel ? '実測 工数' : '実測 合計'}${
-              m.measuredCount < tasks.length ? ` (${m.measuredCount}/${tasks.length})` : ''
+              m.measuredCount < m.totalCount ? ` (${m.measuredCount}/${m.totalCount})` : ''
             }`}
             value={m.measuredCount ? fmt(m.actualTotal) : '—'}
             color={COLORS.actual}
@@ -467,10 +506,10 @@ export function RunDetail({
       )}
 
       {/* 所要時間（並行を考慮）— 並行グループがあるときのみ */}
-      {m.hasParallel && <DurationCard metrics={m} allMeasured={m.measuredCount === tasks.length} />}
+      {m.hasParallel && <DurationCard metrics={m} allMeasured={m.measuredCount === m.totalCount} />}
 
       {/* AI 考察ハンドオフ */}
-      {tasks.length > 0 && (
+      {m.totalCount > 0 && (
         <div
           style={{
             background: COLORS.surface,
