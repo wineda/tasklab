@@ -1,12 +1,11 @@
 // ガントチャート（計画 / 実測のタイムライン表示）
 // 記載順に直列・並行グループは同時開始、という既存のスケジュール意味論を可視化する。
-// レイアウト: タスク名をバーの上に置き、トラック（時間軸領域）は全幅を使う。
+// 表示モード: 「ざっくり」= セクション毎のスパン 1 行 / 「詳細」= 全タスク。
 // ズーム: 「時間幅」で画面幅が表す時間を選択。ズーム中は横スクロールし、
-// タスク名は position: sticky で左端に固定される。
+// 名前は position: sticky で左端に固定される。
 import { useMemo, useState } from 'react'
 import { COLORS } from '../constants'
-import { computeSchedule, fmt } from '../metrics'
-import type { GanttRow } from '../metrics'
+import { computeSchedule, computeSectionSchedule, fmt, isSection } from '../metrics'
 import type { Task } from '../types'
 
 // 目盛り間隔: 表示ウィンドウ内でラベルが 5 個以内に収まる「きり」のいい分数
@@ -23,14 +22,23 @@ const ZOOM_OPTIONS: { label: string; min: number }[] = [
   { label: '15m', min: 15 },
 ]
 
-// sticky なタスク名の最大幅（ビューポートからカード余白ぶんを引いた値）
+// sticky な名前の最大幅（ビューポートからカード余白ぶんを引いた値）
 const STICKY_MAX_W = 'min(86vw, 420px)'
+
+type ViewMode = 'section' | 'task'
 
 export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; collapsible?: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
   const [windowMin, setWindowMin] = useState<number | null>(null) // null = 全体
+  const hasSections = tasks.some(isSection)
+  // セクションがあるランでは「ざっくり」を初期表示（細かすぎる問題への回答）
+  const [mode, setMode] = useState<ViewMode>(() => (hasSections ? 'section' : 'task'))
+  const effMode: ViewMode = hasSections ? mode : 'task'
+
   const open = !collapsible || !collapsed
-  const { rows, planEnd, actualEnd } = useMemo(() => computeSchedule(tasks), [tasks])
+  const taskSchedule = useMemo(() => computeSchedule(tasks), [tasks])
+  const sectionSchedule = useMemo(() => computeSectionSchedule(tasks), [tasks])
+  const { planEnd, actualEnd } = taskSchedule
   const total = Math.max(planEnd, actualEnd, 1)
 
   // 実効ウィンドウ: 全体より広いズームは意味がないので全体にフォールバック
@@ -89,13 +97,26 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
 
       {open && (
         <div style={{ borderTop: `1px solid ${COLORS.line}`, padding: '10px 14px 12px' }}>
+          {/* 表示モード（セクションがあるときのみ） */}
+          {hasSections && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 10.5, color: COLORS.gray, flexShrink: 0 }}>表示</span>
+              <PillButton
+                label="ざっくり（セクション）"
+                selected={effMode === 'section'}
+                onClick={() => setMode('section')}
+              />
+              <PillButton label="詳細（タスク）" selected={effMode === 'task'} onClick={() => setMode('task')} />
+            </div>
+          )}
+
           {/* 時間幅（ズーム）セレクタ */}
           {zoomOptions.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
               <span style={{ fontSize: 10.5, color: COLORS.gray, flexShrink: 0 }}>時間幅</span>
-              <ZoomButton label="全体" selected={windowMin == null} onClick={() => setWindowMin(null)} />
+              <PillButton label="全体" selected={windowMin == null} onClick={() => setWindowMin(null)} />
               {zoomOptions.map((o) => (
-                <ZoomButton
+                <PillButton
                   key={o.min}
                   label={o.label}
                   selected={windowMin === o.min}
@@ -140,13 +161,38 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
               </div>
 
               {/* 行 */}
-              {rows.map((r) =>
-                r.kind === 'section' ? (
-                  <SectionLabelRow key={r.task.id} name={r.task.name} />
-                ) : (
-                  <TaskBarRow key={r.task.id} row={r} total={total} ticks={ticks} />
-                ),
-              )}
+              {effMode === 'section'
+                ? sectionSchedule.rows.map((r) => (
+                    <BarRow
+                      key={r.id}
+                      label={`§ ${r.name || 'セクション'}`}
+                      labelAccent
+                      suffix={`${r.taskCount}タスク`}
+                      planStart={r.planStart}
+                      planDur={r.planDur}
+                      actualStart={r.measuredCount > 0 ? r.actualStart : null}
+                      actualDur={r.measuredCount > 0 ? r.actualDur : null}
+                      partial={r.measuredCount > 0 && r.measuredCount < r.taskCount}
+                      total={total}
+                      ticks={ticks}
+                    />
+                  ))
+                : taskSchedule.rows.map((r) =>
+                    r.kind === 'section' ? (
+                      <SectionLabelRow key={r.task.id} name={r.task.name} />
+                    ) : (
+                      <BarRow
+                        key={r.task.id}
+                        label={r.task.name || '（無題）'}
+                        planStart={r.planStart}
+                        planDur={r.planDur}
+                        actualStart={r.actualStart}
+                        actualDur={r.actualDur}
+                        total={total}
+                        ticks={ticks}
+                      />
+                    ),
+                  )}
             </div>
           </div>
 
@@ -177,11 +223,11 @@ export function GanttChart({ tasks, collapsible = true }: { tasks: Task[]; colla
   )
 }
 
-// --- ズームボタン ---
-function ZoomButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+// --- ピル型トグルボタン（表示モード / ズーム共用） ---
+function PillButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
   return (
     <button
-      className="tl-btn tl-mono"
+      className="tl-btn"
       onClick={onClick}
       aria-pressed={selected}
       style={{
@@ -195,6 +241,7 @@ function ZoomButton({ label, selected, onClick }: { label: string; selected: boo
         background: selected ? COLORS.accent : '#fff',
         color: selected ? '#fff' : COLORS.inkSoft,
         flexShrink: 0,
+        whiteSpace: 'nowrap',
       }}
     >
       {label}
@@ -202,7 +249,7 @@ function ZoomButton({ label, selected, onClick }: { label: string; selected: boo
   )
 }
 
-// --- セクション見出し（罫線付きディバイダ。名前は左端に固定）---
+// --- セクション見出し（詳細モードの罫線付きディバイダ。名前は左端に固定）---
 function SectionLabelRow({ name }: { name: string }) {
   return (
     <div
@@ -233,11 +280,34 @@ function SectionLabelRow({ name }: { name: string }) {
   )
 }
 
-// --- タスク 1 行（名前 + 数値は左端に固定 / 全幅トラックにバー 2 本）---
-function TaskBarRow({ row, total, ticks }: { row: GanttRow; total: number; ticks: number[] }) {
+// --- 1 行（名前 + 数値は左端に固定 / 全幅トラックにバー 2 本）---
+// タスク詳細・セクションざっくり両モードで共用。
+function BarRow({
+  label,
+  labelAccent,
+  suffix,
+  planStart,
+  planDur,
+  actualStart,
+  actualDur,
+  partial,
+  total,
+  ticks,
+}: {
+  label: string
+  labelAccent?: boolean
+  suffix?: string
+  planStart: number
+  planDur: number
+  actualStart: number | null
+  actualDur: number | null
+  partial?: boolean // 実測が一部のタスクのみ（セクションモード用の注記）
+  total: number
+  ticks: number[]
+}) {
   const pct = (v: number) => (v / total) * 100
-  const measured = row.actualStart != null && row.actualDur != null
-  const delta = measured ? (row.actualDur as number) - row.planDur : null
+  const measured = actualStart != null && actualDur != null
+  const delta = measured ? (actualDur as number) - planDur : null
   const dColor =
     delta == null ? COLORS.gray : delta > 0 ? COLORS.rose : delta < 0 ? COLORS.green : COLORS.inkSoft
 
@@ -257,23 +327,28 @@ function TaskBarRow({ row, total, ticks }: { row: GanttRow; total: number; ticks
         }}
       >
         <span
+          className={labelAccent ? 'tl-disp' : undefined}
           style={{
             fontSize: 11.5,
-            fontWeight: 500,
-            color: COLORS.ink,
+            fontWeight: labelAccent ? 700 : 500,
+            color: labelAccent ? COLORS.accent : COLORS.ink,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}
         >
-          {row.task.name || '（無題）'}
+          {label}
         </span>
+        {suffix && (
+          <span style={{ fontSize: 9.5, color: COLORS.gray, flexShrink: 0 }}>{suffix}</span>
+        )}
         <span className="tl-mono" style={{ fontSize: 9.5, color: COLORS.gray, flexShrink: 0 }}>
-          <span style={{ color: COLORS.plan }}>{fmt(row.planDur)}</span>
+          <span style={{ color: COLORS.plan }}>{fmt(planDur)}</span>
           {measured && (
             <>
               {' → '}
-              <span style={{ color: dColor, fontWeight: 700 }}>{fmt(row.actualDur as number)}</span>
+              <span style={{ color: dColor, fontWeight: 700 }}>{fmt(actualDur as number)}</span>
+              {partial && '*'}
             </>
           )}
         </span>
@@ -303,30 +378,30 @@ function TaskBarRow({ row, total, ticks }: { row: GanttRow; total: number; ticks
             }}
           />
         ))}
-        {row.planDur > 0 && (
+        {planDur > 0 && (
           <span
-            data-gantt-plan={`${row.planStart}:${row.planDur}`}
+            data-gantt-plan={`${planStart}:${planDur}`}
             style={{
               position: 'absolute',
               top: 2,
               height: 5,
               borderRadius: 3,
-              left: `${pct(row.planStart)}%`,
-              width: `max(${pct(row.planDur)}%, 3px)`,
+              left: `${pct(planStart)}%`,
+              width: `max(${pct(planDur)}%, 3px)`,
               background: COLORS.plan,
             }}
           />
         )}
-        {measured && (row.actualDur as number) > 0 && (
+        {measured && (actualDur as number) > 0 && (
           <span
-            data-gantt-actual={`${row.actualStart}:${row.actualDur}`}
+            data-gantt-actual={`${actualStart}:${actualDur}`}
             style={{
               position: 'absolute',
               top: 9,
               height: 5,
               borderRadius: 3,
-              left: `${pct(row.actualStart as number)}%`,
-              width: `max(${pct(row.actualDur as number)}%, 3px)`,
+              left: `${pct(actualStart as number)}%`,
+              width: `max(${pct(actualDur as number)}%, 3px)`,
               background: COLORS.actual,
             }}
           />
