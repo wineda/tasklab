@@ -6,6 +6,7 @@ import type { RunMetrics } from '../metrics'
 import { buildPrompt } from '../prompt'
 import { canShare, copyText, sharePrompt } from '../share'
 import { randomId } from '../storage'
+import { useWakeLock } from '../useWakeLock'
 import type { Run, Task } from '../types'
 import { ConfirmDialog, DeltaPill, Overlay } from './common'
 import { NewTaskRow, TaskList } from './TaskRow'
@@ -56,6 +57,8 @@ export function RunDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
   // インライン追加行を開いているセクション id（null = 閉）
   const [addingSectionId, setAddingSectionId] = useState<string | null>(null)
+  // 画面スリープ抑止（計測中に画面が暗くならないように）
+  const wakeLock = useWakeLock()
 
   const up = (fn: (r: Run) => Run) => setDraft((d) => fn(d))
   // 並行フラグの正規化: 先頭タスクと「セクション直後のタスク」はグループの起点なので解除
@@ -235,7 +238,47 @@ export function RunDetail({
             ●
           </span>
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {wakeLock.supported && (
+            <button
+              className="tl-btn"
+              onClick={wakeLock.toggle}
+              aria-pressed={wakeLock.active}
+              aria-label={
+                wakeLock.active ? '画面の常時点灯をやめる' : '画面をつけたままにする（自動で暗くならない）'
+              }
+              title={wakeLock.active ? '画面：常時点灯 ON' : '画面をつけたままにする'}
+              style={{
+                width: 32,
+                height: 32,
+                flexShrink: 0,
+                borderRadius: 8,
+                border: `1px solid ${wakeLock.active ? COLORS.actual : COLORS.line}`,
+                background: wakeLock.active ? COLORS.actual : '#fff',
+                color: wakeLock.active ? '#fff' : COLORS.inkSoft,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+              </svg>
+            </button>
+          )}
           <button
             className="tl-btn"
             onClick={() => setSaveOpen(true)}
